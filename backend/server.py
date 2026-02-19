@@ -327,6 +327,62 @@ async def get_recipes(
     
     return recipes
 
+@api_router.post("/recipes/search-by-ingredients")
+async def search_by_ingredients(request: Request, user: User = Depends(get_current_user)):
+    """Find recipes that can be made with given ingredients"""
+    body = await request.json()
+    available_ingredients = [ing.lower().strip() for ing in body.get("ingredients", [])]
+    
+    if not available_ingredients:
+        return {"recipes": [], "message": "Keine Zutaten angegeben"}
+    
+    all_recipes = await db.recipes.find({}, {"_id": 0}).to_list(1000)
+    
+    results = []
+    for recipe in all_recipes:
+        recipe_ingredients = [ing["name"].lower() for ing in recipe.get("ingredients", [])]
+        
+        if not recipe_ingredients:
+            continue
+        
+        # Count matching ingredients
+        matching = sum(1 for ri in recipe_ingredients 
+                      if any(ai in ri or ri in ai for ai in available_ingredients))
+        
+        total = len(recipe_ingredients)
+        match_percentage = (matching / total * 100) if total > 0 else 0
+        missing = [ing["name"] for ing in recipe.get("ingredients", []) 
+                   if not any(ai in ing["name"].lower() or ing["name"].lower() in ai 
+                             for ai in available_ingredients)]
+        
+        # Include if at least 50% match or at least 2 ingredients match
+        if match_percentage >= 50 or matching >= 2:
+            # Get ratings
+            ratings = await db.ratings.find({"recipe_id": recipe["recipe_id"]}, {"_id": 0}).to_list(100)
+            if ratings:
+                recipe["avg_rating"] = sum(r["stars"] for r in ratings) / len(ratings)
+                recipe["rating_count"] = len(ratings)
+            else:
+                recipe["avg_rating"] = 0
+                recipe["rating_count"] = 0
+            
+            results.append({
+                **recipe,
+                "match_percentage": round(match_percentage),
+                "matching_count": matching,
+                "total_ingredients": total,
+                "missing_ingredients": missing
+            })
+    
+    # Sort by match percentage (highest first)
+    results.sort(key=lambda x: (-x["match_percentage"], -x.get("avg_rating", 0)))
+    
+    return {
+        "recipes": results,
+        "total_found": len(results),
+        "searched_ingredients": available_ingredients
+    }
+
 @api_router.get("/recipes/{recipe_id}")
 async def get_recipe(recipe_id: str, user: User = Depends(get_current_user)):
     """Get a single recipe with ratings"""
