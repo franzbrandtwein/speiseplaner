@@ -1,0 +1,164 @@
+{
+  "identity": {
+    "persona": "E1: The Anti-AI Designer",
+    "philosophy": [
+      "Fusion over Imitation: Mix disparate disciplines.",
+      "Emotion First: Design for feeling, not just function.",
+      "Content is King: Every page tells a story.",
+      "Negative Space: Value empty areas.",
+      "Contrast: Use light vs. dark, rough vs. smooth."
+    ],
+    "anti_patterns": [
+      "Purple/Teal for CTA (Use Fresh Green/Organic Orange instead)",
+      "Inter everywhere (Use Playfair Display for headings)",
+      "Center-Everything (Use asymmetry)",
+      "Gradient Overload (Use texture instead)",
+      "Generic 'SaaS Blue' (Use nature-inspired hues)"
+    ]
+  },
+  "visual_language": {
+    "theme": "light",
+    "typography": {
+      "headings": {
+        "font_family": "Playfair Display, serif",
+        "weights": ["400", "700"],
+        "usage": "H1, H2, H3, Hero Sections",
+        "letter_spacing": "-0.02em"
+      },
+      "body": {
+        "font_family": "Inter, sans-serif",
+        "weights": ["400", "500", "600"],
+        "usage": "Paragraphs, UI Elements, Inputs, Buttons"
+      },
+      "mono": {
+        "font_family": "JetBrains Mono, monospace",
+        "usage": "Nutritional Data, Timers"
+      }
+    },
+    "colors": {
+      "primary": {
+        "name": "Fresh Basil",
+        "hex": "#10B981",
+        "usage": "Primary Buttons, Active States, Success Icons",
+        "hover": "#059669"
+      },
+      "secondary": {
+        "name": "Zest Orange",
+        "hex": "#F59E0B",
+        "usage": "Ratings (Stars), Highlights, 'Cooking' badges",
+        "hover": "#D97706"
+      },
+      "background": {
+        "default": "#F9FAFB",
+        "paper": "#FFFFFF",
+        "subtle": "#F3F4F6"
+      },
+      "text": {
+        "primary": "#111827",
+        "secondary": "#4B5563",
+        "muted": "#9CA3AF"
+      },
+      "border": {
+        "default": "#E5E7EB",
+        "active": "#10B981"
+      }
+    },
+    "spacing": {
+      "scale": "Generous (2x standard)",
+      "container_padding": "p-6 md:p-12",
+      "grid_gap": "gap-6 md:gap-8"
+    },
+    "radius": {
+      "default": "rounded-2xl",
+      "buttons": "rounded-full",
+      "inputs": "rounded-xl"
+    },
+    "shadows": {
+      "card": "0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)",
+      "hover": "0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)",
+      "dropdown": "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-primary text-white hover:bg-primary-hover shadow-lg hover:shadow-xl transition-all duration-300 font-medium px-6 py-3 rounded-full flex items-center gap-2",
+      "secondary": "bg-white text-text-primary border border-border hover:bg-background-subtle hover:border-primary transition-all duration-300 font-medium px-6 py-3 rounded-full flex items-center gap-2",
+      "ghost": "text-text-secondary hover:text-primary hover:bg-primary/10 transition-all duration-200 px-4 py-2 rounded-lg"
+    },
+    "inputs": {
+      "default": "bg-white border-border focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl px-4 py-3 transition-all duration-200 outline-none w-full text-text-primary placeholder:text-text-muted"
+    },
+    "cards": {
+      "recipe": "group bg-white rounded-2xl overflow-hidden border border-border/50 hover:border-primary/30 hover:shadow-hover transition-all duration-300 flex flex-col h-full",
+      "meal_plan": "bg-white p-4 rounded-xl border border-border hover:border-primary/50 transition-all cursor-pointer relative overflow-hidden"
+    },
+    "navigation": {
+      "sidebar": "fixed left-0 top-0 h-full w-64 bg-white border-r border-border p-6 flex flex-col gap-2 z-50 hidden md:flex",
+      "mobile_nav": "fixed bottom-0 left-0 w-full bg-white border-t border-border p-4 flex justify-around items-center z-50 md:hidden backdrop-blur-lg bg-white/90"
+    }
+  },
+  "layout_strategies": {
+    "dashboard": "Bento Grid: Summary stats (top), Current Meal Plan (middle), Featured/Recent Recipes (bottom). Use asymmetry.",
+    "recipe_detail": "Two-column Layout (Desktop): Left = Ingredients (Sticky), Right = Instructions & Story. Hero Image spans full width at top.",
+    "meal_planner": "Calendar Grid: 7 Columns (Days) x 3 Rows (Meals). Drag & Drop enabled visual cues."
+  },
+  "assets": {
+    "images": {
+      "hero_cooking": "https://images.unsplash.com/photo-1765267642339-e6e1c8ed5b88?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHw0fHxmcmVzaCUyMGhlYWx0aHklMjBjb29raW5nJTIwaW5ncmVkaWVudHMlMjBraXRjaGVufGVufDB8fHx8MTc3MTU0MDc3M3ww&ixlib=rb-4.1.0&q=85",
+      "ingredients_pantry": "https://images.unsplash.com/photo-1766596663327-b932edfe968b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwxfHxmcmVzaCUyMGhlYWx0aHklMjBjb29raW5nJTIwaW5ncmVkaWVudHMlMjBraXRjaGVufGVufDB8fHx8MTc3MTU0MDc3M3ww&ixlib=rb-4.1.0&q=85",
+      "cookbook_vibe": "https://images.pexels.com/photos/8845419/pexels-photo-8845419.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "recipe_grilled_chicken": "https://images.unsplash.com/photo-1763867641064-ede1720da844?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHwxfHxkZWxpY2lvdXMlMjBoZWFsdGh5JTIwcGxhdGVkJTIwZm9vZCUyMGdvdXJtZXR8ZW58MHx8fHwxNzcxNTQwNzgzfDA&ixlib=rb-4.1.0&q=85",
+      "recipe_gourmet_fish": "https://images.unsplash.com/photo-1758384077218-fa3c83d112e8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHwzfHxkZWxpY2lvdXMlMjBoZWFsdGh5JTIwcGxhdGVkJTIwZm9vZCUyMGdvdXJtZXR8ZW58MHx8fHwxNzcxNTQwNzgzfDA&ixlib=rb-4.1.0&q=85",
+      "recipe_appetizer": "https://images.unsplash.com/photo-1758384077190-cecd501b926a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MDV8MHwxfHNlYXJjaHw0fHxkZWxpY2lvdXMlMjBoZWFsdGh5JTIwcGxhdGVkJTIwZm9vZCUyMGdvdXJtZXR8ZW58MHx8fHwxNzcxNTQwNzgzfDA&ixlib=rb-4.1.0&q=85",
+      "social_google": "https://www.svgrepo.com/show/475656/google-color.svg"
+    },
+    "icons": {
+      "library": "lucide-react",
+      "style": "Stroke width 1.5px or 2px, depending on size. Consistent rounded caps."
+    }
+  },
+  "motion": {
+    "page_transition": {
+      "initial": { "opacity": 0, "y": 20 },
+      "animate": { "opacity": 1, "y": 0 },
+      "exit": { "opacity": 0, "y": -20 },
+      "transition": { "duration": 0.3, "ease": "easeOut" }
+    },
+    "hover_scale": {
+      "whileHover": { "scale": 1.02 },
+      "transition": { "type": "spring", "stiffness": 300 }
+    },
+    "list_item": {
+      "initial": { "opacity": 0, "x": -20 },
+      "animate": { "opacity": 1, "x": 0 },
+      "transition": { "delay": 0.1 }
+    }
+  },
+  "accessibility": {
+    "contrast": "Ensure text-to-background ratio of 4.5:1 for normal text.",
+    "focus_states": "Visible focus ring using 'ring-2 ring-primary ring-offset-2'.",
+    "aria_labels": "Mandatory for all icon-only buttons."
+  },
+  "instructions_to_main_agent": [
+    "Use Tailwind CSS for all styling. Avoid custom CSS classes unless for complex animations.",
+    "Install 'lucide-react' for icons if not present.",
+    "Use 'framer-motion' for page transitions and micro-interactions.",
+    "Keep components modular. Create a 'components/ui' folder for reusable atoms (Button, Input, Card).",
+    "Ensure the app is fully responsive (Mobile First approach).",
+    "Use the provided image URLs. Do NOT use placeholders.",
+    "Implement the 'Bento Grid' layout for the Dashboard.",
+    "Use 'Playfair Display' for all Headings (H1-H3) to give it that 'Food Magazine' feel.",
+    "Use 'Inter' for body text for maximum readability.",
+    "Primary Action Buttons (Save, Add to Plan) should be 'Fresh Basil' Green.",
+    "Secondary Actions (Cancel, Back) should be outline or ghost styles.",
+    "Add 'data-testid' to all interactive elements for testing."
+  ],
+  "universal_guidelines": [
+    "Avoid generic 'SaaS' look. Make it feel organic and tactile.",
+    "No gradients on text. Keep it legible.",
+    "Use ample whitespace. Food needs room to breathe.",
+    "Shadows should be soft and colored (e.g., green-tinted shadow for green buttons).",
+    "Never use pure black (#000000). Use Dark Charcoal (#111827).",
+    "Interactive elements must have clear hover and active states."
+  ]
+}
