@@ -5,7 +5,7 @@ import { useAuth, API } from "../App";
 import { Button } from "./ui/button";
 import { 
   ChefHat, LayoutDashboard, BookOpen, Calendar, ShoppingCart, 
-  LogOut, Menu, X, User 
+  LogOut, Menu, X, User, Sparkles 
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -36,6 +36,7 @@ const Layout = ({ children }) => {
   const navItems = [
     { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { path: "/recipes", label: "Rezepte", icon: BookOpen },
+    { path: "/ingredient-search", label: "Was kochen?", icon: Sparkles },
     { path: "/meal-planner", label: "Speiseplan", icon: Calendar },
     { path: "/shopping-list", label: "Einkaufsliste", icon: ShoppingCart },
   ];

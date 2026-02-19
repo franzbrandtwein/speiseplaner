@@ -11,6 +11,7 @@ import RecipeDetail from "./pages/RecipeDetail";
 import RecipeForm from "./pages/RecipeForm";
 import MealPlanner from "./pages/MealPlanner";
 import ShoppingList from "./pages/ShoppingList";
+import IngredientSearch from "./pages/IngredientSearch";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -184,6 +185,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <ShoppingList />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ingredient-search"
+        element={
+          <ProtectedRoute>
+            <IngredientSearch />
           </ProtectedRoute>
         }
       />
