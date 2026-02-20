@@ -34,6 +34,7 @@
 - ✅ Recipe Form (Create/Edit)
 - ✅ Meal Planner (Weekly Calendar)
 - ✅ Shopping List with Checkboxes
+- ✅ Ingredient Search ("Was kann ich kochen?") - Find recipes by available ingredients
 - ✅ Responsive Design (Mobile & Desktop)
 
 ### Design
@@ -48,6 +49,7 @@
 - ✅ All core features implemented
 
 ### P1 (Next Phase)
+- [x] Zutaten-Suche ("Was kann ich kochen?") - Jan 2026
 - [ ] Recipe image upload (currently URL only)
 - [ ] Drag & Drop for meal planner
 - [ ] Recipe categories management
@@ -73,6 +75,7 @@
 - GET/POST /api/recipes - List/Create recipes
 - GET/PUT/DELETE /api/recipes/:id - Recipe CRUD
 - POST /api/recipes/:id/ratings - Add rating
+- POST /api/recipes/search-by-ingredients - Search recipes by available ingredients
 - GET/POST /api/mealplans - Get/Save meal plan
 - GET /api/shopping-list - Generate shopping list
 - GET /api/categories - Get categories/difficulties/allergens
