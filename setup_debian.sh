@@ -75,14 +75,13 @@ fi
 # ============================================
 if ! command -v python3 &> /dev/null; then
     info "Installiere Python 3..."
-    $SUDO apt-get install -y -qq python3 python3-pip python3-venv
+    $SUDO apt-get install -y -qq python3 python3-pip python3-venv python3-full
 else
     info "Python bereits installiert: $(python3 --version)"
 fi
 
-# pip aktualisieren
-info "Aktualisiere pip..."
-python3 -m pip install --upgrade pip --quiet
+# python3-venv sicherstellen
+$SUDO apt-get install -y -qq python3-venv python3-full
 
 # ============================================
 # MongoDB 7.0 installieren
@@ -127,6 +126,7 @@ fi
 
 # Virtual Environment aktivieren und Abhängigkeiten installieren
 source venv/bin/activate
+pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 
 # .env Datei erstellen falls nicht vorhanden
