@@ -127,7 +127,14 @@ fi
 # Virtual Environment aktivieren und Abhängigkeiten installieren
 source venv/bin/activate
 pip install --upgrade pip --quiet
-pip install -r requirements.txt --quiet
+
+# Lokale requirements verwenden (ohne Emergent-spezifische Pakete)
+if [ -f "requirements.local.txt" ]; then
+    pip install -r requirements.local.txt --quiet
+else
+    pip install -r requirements.txt --quiet 2>/dev/null || \
+    pip install fastapi uvicorn python-dotenv pymongo pydantic motor httpx python-multipart --quiet
+fi
 
 # .env Datei erstellen falls nicht vorhanden
 if [ ! -f ".env" ]; then
