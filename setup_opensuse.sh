@@ -79,10 +79,6 @@ else
     info "Python bereits installiert: $(python3 --version)"
 fi
 
-# pip aktualisieren
-info "Aktualisiere pip..."
-python3 -m pip install --upgrade pip --quiet
-
 # ============================================
 # MongoDB 7.0 installieren
 # ============================================
@@ -125,6 +121,7 @@ fi
 
 # Virtual Environment aktivieren und Abhängigkeiten installieren
 source venv/bin/activate
+pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 
 # .env Datei erstellen falls nicht vorhanden
