@@ -1,5 +1,9 @@
 import { ChefHat, Calendar, ShoppingCart, Star, Clock, Users } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Link } from "react-router-dom";
+
+// Check if running on Emergent platform
+const IS_EMERGENT = window.location.hostname.includes('emergentagent.com');
 
 // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
 const handleGoogleLogin = () => {
@@ -31,14 +35,22 @@ const LandingPage = () => {
             </span>
           </div>
           
-          <Button
-            onClick={handleGoogleLogin}
-            data-testid="login-button-nav"
-            className="btn-primary"
-          >
-            <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
-            Anmelden
-          </Button>
+          {IS_EMERGENT ? (
+            <Button
+              onClick={handleGoogleLogin}
+              data-testid="login-button-nav"
+              className="btn-primary"
+            >
+              <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+              Anmelden
+            </Button>
+          ) : (
+            <Link to="/auth">
+              <Button data-testid="login-button-nav" className="btn-primary">
+                Anmelden
+              </Button>
+            </Link>
+          )}
         </nav>
 
         <div className="relative z-10 max-w-7xl mx-auto px-6 pt-16 pb-24 md:pt-24 md:pb-32">
@@ -52,14 +64,22 @@ const LandingPage = () => {
               und erstelle automatisch Einkaufslisten. Kochen war noch nie so einfach.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <Button
-                onClick={handleGoogleLogin}
-                data-testid="get-started-button"
-                className="btn-primary text-lg px-8 py-4"
-              >
-                <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
-                Kostenlos starten
-              </Button>
+              {IS_EMERGENT ? (
+                <Button
+                  onClick={handleGoogleLogin}
+                  data-testid="get-started-button"
+                  className="btn-primary text-lg px-8 py-4"
+                >
+                  <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+                  Kostenlos starten
+                </Button>
+              ) : (
+                <Link to="/auth">
+                  <Button data-testid="get-started-button" className="btn-primary text-lg px-8 py-4">
+                    Kostenlos starten
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
         </div>
