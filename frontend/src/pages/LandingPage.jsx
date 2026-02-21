@@ -134,14 +134,25 @@ const LandingPage = () => {
           <p className="text-emerald-100 mb-8">
             Starte jetzt kostenlos und erlebe, wie einfach Meal Planning sein kann.
           </p>
-          <Button
-            onClick={handleGoogleLogin}
-            data-testid="cta-button"
-            className="bg-white text-emerald-600 hover:bg-gray-100 px-8 py-4 rounded-full font-medium text-lg shadow-xl hover:shadow-2xl transition-all"
-          >
-            <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5 mr-2 inline" />
-            Mit Google anmelden
-          </Button>
+          {IS_EMERGENT ? (
+            <Button
+              onClick={handleGoogleLogin}
+              data-testid="cta-button"
+              className="bg-white text-emerald-600 hover:bg-gray-100 px-8 py-4 rounded-full font-medium text-lg shadow-xl hover:shadow-2xl transition-all"
+            >
+              <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5 mr-2 inline" />
+              Mit Google anmelden
+            </Button>
+          ) : (
+            <Link to="/auth">
+              <Button
+                data-testid="cta-button"
+                className="bg-white text-emerald-600 hover:bg-gray-100 px-8 py-4 rounded-full font-medium text-lg shadow-xl hover:shadow-2xl transition-all"
+              >
+                Jetzt starten
+              </Button>
+            </Link>
+          )}
         </div>
       </section>
 
