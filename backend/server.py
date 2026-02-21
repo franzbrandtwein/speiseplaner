@@ -221,6 +221,102 @@ async def get_current_user(request: Request) -> User:
 
 # ============ AUTH ENDPOINTS ============
 
+# Check if running in Emergent environment
+IS_EMERGENT = "emergentagent.com" in os.environ.get('CORS_ORIGINS', '')
+
+@api_router.post("/auth/register")
+async def register(data: RegisterRequest, response: Response):
+    """Register a new user with email/password"""
+    # Check if user exists
+    existing = await db.users.find_one({"email": data.email}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email bereits registriert")
+    
+    # Create user
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    password_hash = hash_password(data.password)
+    
+    user = User(
+        user_id=user_id,
+        email=data.email,
+        name=data.name,
+        picture=None
+    )
+    user_doc = user.model_dump()
+    user_doc['created_at'] = user_doc['created_at'].isoformat()
+    user_doc['password_hash'] = password_hash
+    await db.users.insert_one(user_doc)
+    
+    # Create session
+    session_token = f"token_{uuid.uuid4().hex}"
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    
+    session = UserSession(
+        user_id=user_id,
+        session_token=session_token,
+        expires_at=expires_at
+    )
+    session_doc = session.model_dump()
+    session_doc['expires_at'] = session_doc['expires_at'].isoformat()
+    session_doc['created_at'] = session_doc['created_at'].isoformat()
+    await db.user_sessions.insert_one(session_doc)
+    
+    # Set cookie
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=False,  # Set True for HTTPS
+        samesite="lax",
+        path="/",
+        max_age=7 * 24 * 60 * 60
+    )
+    
+    return {"user_id": user_id, "email": data.email, "name": data.name}
+
+@api_router.post("/auth/login")
+async def login(data: LoginRequest, response: Response):
+    """Login with email/password"""
+    user_doc = await db.users.find_one({"email": data.email}, {"_id": 0})
+    
+    if not user_doc or not user_doc.get('password_hash'):
+        raise HTTPException(status_code=401, detail="Ungültige Anmeldedaten")
+    
+    if not verify_password(data.password, user_doc['password_hash']):
+        raise HTTPException(status_code=401, detail="Ungültige Anmeldedaten")
+    
+    # Create session
+    session_token = f"token_{uuid.uuid4().hex}"
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    
+    session = UserSession(
+        user_id=user_doc['user_id'],
+        session_token=session_token,
+        expires_at=expires_at
+    )
+    session_doc = session.model_dump()
+    session_doc['expires_at'] = session_doc['expires_at'].isoformat()
+    session_doc['created_at'] = session_doc['created_at'].isoformat()
+    await db.user_sessions.insert_one(session_doc)
+    
+    # Set cookie
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=False,  # Set True for HTTPS
+        samesite="lax",
+        path="/",
+        max_age=7 * 24 * 60 * 60
+    )
+    
+    return {
+        "user_id": user_doc['user_id'],
+        "email": user_doc['email'],
+        "name": user_doc['name'],
+        "picture": user_doc.get('picture')
+    }
+
 @api_router.post("/auth/session")
 async def exchange_session(request: Request, response: Response):
     """Exchange session_id from Emergent Auth for session_token"""
