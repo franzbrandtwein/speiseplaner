@@ -6,10 +6,12 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional
 import uuid
 import httpx
+import hashlib
+import secrets
 from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).parent
