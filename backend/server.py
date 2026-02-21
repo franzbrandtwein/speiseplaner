@@ -154,6 +154,33 @@ class ShoppingList(BaseModel):
 
 # ============ AUTH HELPERS ============
 
+# ============ AUTH HELPERS ============
+
+def hash_password(password: str) -> str:
+    """Hash password with salt"""
+    salt = secrets.token_hex(16)
+    hashed = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+    return f"{salt}:{hashed.hex()}"
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    """Verify password against stored hash"""
+    try:
+        salt, hashed = stored_hash.split(':')
+        new_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+        return new_hash.hex() == hashed
+    except:
+        return False
+
+# Auth Models
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6)
+    name: str = Field(min_length=2)
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
 async def get_current_user(request: Request) -> User:
     """Extract and validate user from session token"""
     session_token = request.cookies.get("session_token")
