@@ -5,6 +5,7 @@ import { Toaster, toast } from "sonner";
 
 // Pages
 import LandingPage from "./pages/LandingPage";
+import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
 import RecipesPage from "./pages/RecipesPage";
 import RecipeDetail from "./pages/RecipeDetail";
@@ -132,6 +133,7 @@ function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/auth" element={<AuthPage />} />
       <Route
         path="/dashboard"
         element={
