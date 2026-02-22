@@ -12,21 +12,33 @@ export function usePWAInstall() {
   useEffect(() => {
     // Check if already installed (standalone mode)
     const checkInstalled = () => {
-      if (window.matchMedia('(display-mode: standalone)').matches ||
-          window.navigator.standalone === true) {
+      if (
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.navigator.standalone === true
+      ) {
         setIsInstalled(true);
+        return true;
       }
+      return false;
     };
-    checkInstalled();
+
+    const alreadyInstalled = checkInstalled();
+    if (alreadyInstalled) return;
 
     // Check for iOS
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
     setIsIOS(ios);
-    if (ios && !window.navigator.standalone) {
+    if (ios) {
       setIsInstallable(true);
+      return;
     }
 
-    // Listen for beforeinstallprompt (Chrome/Android)
+    // For all other browsers: show button immediately as fallback
+    // The button will trigger the native prompt if available,
+    // or show manual instructions otherwise
+    setIsInstallable(true);
+
+    // Listen for beforeinstallprompt (Chrome/Android/Edge)
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -51,16 +63,20 @@ export function usePWAInstall() {
   }, []);
 
   const promptInstall = async () => {
-    if (!deferredPrompt) return false;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    setDeferredPrompt(null);
-    if (outcome === 'accepted') {
-      setIsInstallable(false);
-      return true;
+    if (deferredPrompt) {
+      // Native browser prompt available
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      setDeferredPrompt(null);
+      if (outcome === 'accepted') {
+        setIsInstallable(false);
+        return 'installed';
+      }
+      return 'dismissed';
     }
-    return false;
+    // No native prompt → show manual instructions
+    return 'manual';
   };
 
-  return { isInstallable, isInstalled, isIOS, promptInstall };
+  return { isInstallable, isInstalled, isIOS, promptInstall, hasNativePrompt: !!deferredPrompt };
 }
