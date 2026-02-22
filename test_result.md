@@ -188,6 +188,9 @@ frontend:
       - working: true
         agent: "main"
         comment: "Install-Banner mit beforeinstallprompt Event-Handling, iOS-spezifische Anleitung, Dismiss-Button mit localStorage."
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: PWA Install button working perfectly on landing page. Desktop (1920x1080): 'Installieren' button visible in top nav, modal opens with browser-specific instructions, 'Verstanden' button closes modal. Mobile (390x844): Install icon visible, modal opens correctly, closes successfully."
 
   - task: "Update-Banner in Layout"
     implemented: true
