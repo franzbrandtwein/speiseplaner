@@ -114,7 +114,7 @@ const InstallInstructionsModal = ({ isIOS, onClose }) => {
 
 /**
  * Install Button – can be embedded in nav or shown as floating banner
- * variant: 'nav' | 'banner'
+ * variant: 'nav' (sidebar full-width) | 'topnav' (compact for header) | 'banner' (floating)
  */
 export const InstallButton = ({ variant = 'banner' }) => {
   const { isInstallable, isInstalled, isIOS, promptInstall, hasNativePrompt } = usePWAInstall();
@@ -153,6 +153,26 @@ export const InstallButton = ({ variant = 'banner' }) => {
         >
           <Download className="w-5 h-5 flex-shrink-0" />
           <span className="text-sm font-medium">App installieren</span>
+        </button>
+        {showModal && (
+          <InstallInstructionsModal
+            isIOS={isIOS}
+            onClose={() => setShowModal(false)}
+          />
+        )}
+      </>
+    );
+  }
+
+  if (variant === 'topnav') {
+    return (
+      <>
+        <button
+          onClick={handleClick}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 transition-colors text-emerald-700 text-sm font-medium"
+        >
+          <Download className="w-4 h-4" />
+          <span className="hidden sm:inline">Installieren</span>
         </button>
         {showModal && (
           <InstallInstructionsModal
