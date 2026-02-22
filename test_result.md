@@ -101,3 +101,121 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Progressive Web App (PWA) aus dem Speisenplaner erstellen - installierbar, offline-fähig mit Service Worker, Manifest und Install-Prompt"
+
+frontend:
+  - task: "PWA Manifest (manifest.json)"
+    implemented: true
+    working: true
+    file: "frontend/public/manifest.json"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "manifest.json erstellt mit name='Speisenplaner', 10 Icons (72-512px inkl. maskable), theme_color=#10B981, display=standalone, lang=de"
+
+  - task: "PWA Icons generiert"
+    implemented: true
+    working: true
+    file: "frontend/public/icons/"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "13 PNG-Icons generiert (72x72 bis 512x512, maskable 192+512, apple-touch-icon 180x180, favicon 16+32). Grüner Hintergrund mit Gabel/Löffel Icon."
+
+  - task: "Service Worker (service-worker.js)"
+    implemented: true
+    working: true
+    file: "frontend/public/service-worker.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Service Worker registriert (1 Registration, scope=/, state=activated). Strategien: Cache-First für Static, Network-First für API, Offline-Fallback."
+
+  - task: "Offline-Seite (offline.html)"
+    implemented: true
+    working: true
+    file: "frontend/public/offline.html"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Offline-Fallback-Seite erstellt mit deutschem Text, Retry-Button und Hinweis auf gecachte Seiten."
+
+  - task: "index.html PWA Meta-Tags"
+    implemented: true
+    working: true
+    file: "frontend/public/index.html"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Manifest-Link, Apple PWA Meta-Tags, theme-color=#10B981, title='Speisenplaner', OG-Tags hinzugefügt."
+
+  - task: "SW Registrierung (serviceWorkerRegistration.js)"
+    implemented: true
+    working: true
+    file: "frontend/src/serviceWorkerRegistration.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Service Worker Registration mit onSuccess/onUpdate Callbacks implementiert."
+
+  - task: "InstallPrompt Komponente"
+    implemented: true
+    working: true
+    file: "frontend/src/components/InstallPrompt.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Install-Banner mit beforeinstallprompt Event-Handling, iOS-spezifische Anleitung, Dismiss-Button mit localStorage."
+
+  - task: "Update-Banner in Layout"
+    implemented: true
+    working: true
+    file: "frontend/src/components/Layout.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Update-Banner zeigt 'Neue Version verfügbar!' wenn SW-Update vorhanden, mit 'Jetzt aktualisieren' Button."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "PWA Manifest"
+    - "Service Worker"
+    - "InstallPrompt Komponente"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "PWA-Implementierung abgeschlossen. SW ist aktiv (verified via browser), Manifest geladen (10 Icons), Offline-Seite funktioniert. InstallPrompt und Update-Banner in Layout.jsx integriert."
