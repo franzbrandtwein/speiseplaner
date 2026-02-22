@@ -180,6 +180,33 @@ class ShoppingList(BaseModel):
     items: List[ShoppingListItem] = []
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+# ============ GRUPPEN MODELS ============
+
+class Group(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    group_id: str = Field(default_factory=lambda: f"group_{uuid.uuid4().hex[:12]}")
+    name: str
+    owner_id: str
+    member_ids: List[str] = []
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class GroupCreate(BaseModel):
+    name: str
+
+class Invitation(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    invitation_id: str = Field(default_factory=lambda: f"inv_{uuid.uuid4().hex[:12]}")
+    group_id: str
+    inviter_id: str
+    invitee_email: str
+    token: str = Field(default_factory=lambda: secrets.token_urlsafe(32))
+    status: str = "pending"  # pending, accepted, declined, expired
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(days=7))
+
+class InvitationCreate(BaseModel):
+    email: EmailStr
+
 # ============ AUTH HELPERS ============
 
 # ============ AUTH HELPERS ============
