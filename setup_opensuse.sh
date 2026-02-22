@@ -328,6 +328,18 @@ EOF
 chmod +x uninstall.sh
 
 # ============================================
+# SMTP-Konfiguration vorbereiten
+# ============================================
+info "Bereite SMTP-Konfiguration vor..."
+$SUDO mkdir -p /etc/speisenplaner
+if [ ! -f "/etc/speisenplaner/smtp.conf" ]; then
+    $SUDO cp "$PROJECT_DIR/smtp.conf.example" /etc/speisenplaner/smtp.conf
+    $SUDO chmod 600 /etc/speisenplaner/smtp.conf
+    warn "SMTP-Konfiguration erstellt unter /etc/speisenplaner/smtp.conf"
+    warn "Bitte bearbeite diese Datei mit deinen SMTP-Zugangsdaten"
+fi
+
+# ============================================
 # Firewall-Regeln (falls firewalld aktiv)
 # ============================================
 if systemctl is-active --quiet firewalld; then
