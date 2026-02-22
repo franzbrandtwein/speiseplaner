@@ -26,10 +26,9 @@ db = client[os.environ['DB_NAME']]
 app = FastAPI()
 
 # CORS - muss direkt nach App-Erstellung kommen
-cors_origins = os.environ.get('CORS_ORIGINS', '*').split(',')
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins if cors_origins != ['*'] else ["*"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
