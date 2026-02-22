@@ -5,7 +5,7 @@ import { useAuth, API } from "../App";
 import { Button } from "./ui/button";
 import { 
   ChefHat, LayoutDashboard, BookOpen, Calendar, ShoppingCart, 
-  LogOut, Menu, X, User, Sparkles 
+  LogOut, Menu, X, User, Sparkles, Users 
 } from "lucide-react";
 import {
   DropdownMenu,
