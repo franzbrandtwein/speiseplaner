@@ -7,7 +7,7 @@ import uuid
 
 class RecipeAPITester:
     def __init__(self):
-        self.base_url = "https://meal-prep-9.preview.emergentagent.com/api"
+        self.base_url = "https://feast-organizer-1.preview.emergentagent.com/api"
         self.session_token = None
         self.user_id = None
         self.tests_run = 0
