@@ -22,6 +22,25 @@ const Layout = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updateRegistration, setUpdateRegistration] = useState(null);
+
+  // Listen for SW update events
+  useEffect(() => {
+    const handleUpdate = (event) => {
+      setUpdateAvailable(true);
+      setUpdateRegistration(event.detail);
+    };
+    window.addEventListener('pwa-update-available', handleUpdate);
+    return () => window.removeEventListener('pwa-update-available', handleUpdate);
+  }, []);
+
+  const handleApplyUpdate = () => {
+    if (updateRegistration && updateRegistration.waiting) {
+      updateRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+    window.location.reload();
+  };
 
   const handleLogout = async () => {
     try {
