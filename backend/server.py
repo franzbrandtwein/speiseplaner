@@ -107,6 +107,7 @@ class Recipe(BaseModel):
     nutrition: Optional[NutritionInfo] = None
     allergens: List[str] = []
     cost_per_portion: Optional[float] = None
+    shared_with_group: bool = False  # Mit Gruppe teilen
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
