@@ -125,6 +125,7 @@ class RecipeCreate(BaseModel):
     nutrition: Optional[NutritionInfo] = None
     allergens: List[str] = []
     cost_per_portion: Optional[float] = None
+    shared_with_group: bool = False
 
 class Rating(BaseModel):
     model_config = ConfigDict(extra="ignore")
