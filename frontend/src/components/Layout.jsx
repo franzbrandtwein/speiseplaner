@@ -95,6 +95,11 @@ const Layout = ({ children }) => {
           })}
         </nav>
 
+        {/* Install Button */}
+        <div className="py-3">
+          <InstallButton variant="nav" />
+        </div>
+
         {/* User Menu */}
         <div className="pt-4 border-t border-gray-100">
           <DropdownMenu>
