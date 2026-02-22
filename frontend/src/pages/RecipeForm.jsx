@@ -56,8 +56,12 @@ const RecipeForm = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const catRes = await axios.get(`${API}/categories`, { withCredentials: true });
+        const [catRes, groupRes] = await Promise.all([
+          axios.get(`${API}/categories`, { withCredentials: true }),
+          axios.get(`${API}/groups/my`, { withCredentials: true })
+        ]);
         setCategories(catRes.data);
+        setHasGroup(groupRes.data.group !== null);
         
         if (isEditing) {
           const recipeRes = await axios.get(`${API}/recipes/${id}`, { withCredentials: true });
@@ -75,7 +79,8 @@ const RecipeForm = () => {
             ingredients: recipe.ingredients?.length ? recipe.ingredients : [{ name: "", amount: "", unit: "g" }],
             instructions: recipe.instructions?.length ? recipe.instructions : [""],
             nutrition: recipe.nutrition || { calories: "", protein: "", carbs: "", fat: "", fiber: "" },
-            allergens: recipe.allergens || []
+            allergens: recipe.allergens || [],
+            shared_with_group: recipe.shared_with_group || false
           });
         }
       } catch (error) {
