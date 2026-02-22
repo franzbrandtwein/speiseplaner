@@ -16,8 +16,9 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Checkbox } from "../components/ui/checkbox";
+import { Switch } from "../components/ui/switch";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, Save, Image } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, Image, Users } from "lucide-react";
 
 const RecipeForm = () => {
   const { id } = useParams();
@@ -27,6 +28,7 @@ const RecipeForm = () => {
   const [loading, setLoading] = useState(isEditing);
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState({ categories: [], difficulties: [], allergens: [] });
+  const [hasGroup, setHasGroup] = useState(false);
   
   const [formData, setFormData] = useState({
     name: "",
@@ -47,7 +49,8 @@ const RecipeForm = () => {
       fat: "",
       fiber: ""
     },
-    allergens: []
+    allergens: [],
+    shared_with_group: false
   });
 
   useEffect(() => {
