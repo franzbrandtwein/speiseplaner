@@ -37,7 +37,7 @@ const LandingPage = () => {
           </div>
           
           <div className="flex items-center gap-2">
-            <InstallButton variant="nav" />
+            <InstallButton variant="topnav" />
             {IS_EMERGENT ? (
               <Button
                 onClick={handleGoogleLogin}
