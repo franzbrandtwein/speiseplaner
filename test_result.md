@@ -222,3 +222,5 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: "PWA-Implementierung abgeschlossen. SW ist aktiv (verified via browser), Manifest geladen (10 Icons), Offline-Seite funktioniert. InstallPrompt und Update-Banner in Layout.jsx integriert."
+  - agent: "testing"
+    message: "✅ PWA Install Button Test Complete: Verified InstallPrompt component on landing page (https://feast-organizer-1.preview.emergentagent.com). Desktop: 'Installieren' button visible in nav, modal opens with browser-specific instructions (Chrome/Edge detected), modal closes on 'Verstanden' click. Mobile (390x844): Install icon visible, modal functionality working. All tests passed."
