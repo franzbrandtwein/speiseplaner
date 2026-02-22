@@ -760,11 +760,23 @@ async def add_rating(recipe_id: str, rating_data: RatingCreate, user: User = Dep
 
 @api_router.get("/mealplans")
 async def get_meal_plan(week_start: str, user: User = Depends(get_current_user)):
-    """Get meal plan for a specific week"""
-    plan = await db.meal_plans.find_one({
-        "user_id": user.user_id,
-        "week_start": week_start
-    }, {"_id": 0})
+    """Get meal plan for a specific week - persönlich oder Gruppen-Plan"""
+    # Prüfen ob User in einer Gruppe ist
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+    
+    # Suche nach Gruppenplan oder persönlichem Plan
+    if group_id:
+        plan = await db.meal_plans.find_one({
+            "group_id": group_id,
+            "week_start": week_start
+        }, {"_id": 0})
+    else:
+        plan = await db.meal_plans.find_one({
+            "user_id": user.user_id,
+            "group_id": None,
+            "week_start": week_start
+        }, {"_id": 0})
     
     if not plan:
         days = []
@@ -780,19 +792,33 @@ async def get_meal_plan(week_start: str, user: User = Depends(get_current_user))
         return {
             "plan_id": None,
             "user_id": user.user_id,
+            "group_id": group_id,
             "week_start": week_start,
-            "days": days
+            "days": days,
+            "is_group_plan": group_id is not None
         }
     
+    plan["is_group_plan"] = plan.get("group_id") is not None
     return plan
 
 @api_router.post("/mealplans")
 async def save_meal_plan(plan_data: MealPlanUpdate, user: User = Depends(get_current_user)):
-    """Create or update meal plan"""
-    existing = await db.meal_plans.find_one({
-        "user_id": user.user_id,
-        "week_start": plan_data.week_start
-    }, {"_id": 0})
+    """Create or update meal plan - persönlich oder Gruppen-Plan"""
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+    
+    # Suche bestehenden Plan
+    if group_id:
+        existing = await db.meal_plans.find_one({
+            "group_id": group_id,
+            "week_start": plan_data.week_start
+        }, {"_id": 0})
+    else:
+        existing = await db.meal_plans.find_one({
+            "user_id": user.user_id,
+            "group_id": None,
+            "week_start": plan_data.week_start
+        }, {"_id": 0})
     
     if existing:
         await db.meal_plans.update_one(
@@ -802,10 +828,11 @@ async def save_meal_plan(plan_data: MealPlanUpdate, user: User = Depends(get_cur
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }}
         )
-        return {"message": "Meal plan updated", "plan_id": existing["plan_id"]}
+        return {"message": "Speiseplan aktualisiert", "plan_id": existing["plan_id"]}
     
     plan = MealPlan(
         user_id=user.user_id,
+        group_id=group_id,
         week_start=plan_data.week_start,
         days=plan_data.days
     )
@@ -814,7 +841,7 @@ async def save_meal_plan(plan_data: MealPlanUpdate, user: User = Depends(get_cur
     plan_doc['updated_at'] = plan_doc['updated_at'].isoformat()
     
     await db.meal_plans.insert_one(plan_doc)
-    return {"message": "Meal plan created", "plan_id": plan.plan_id}
+    return {"message": "Speiseplan erstellt", "plan_id": plan.plan_id}
 
 # ============ SHOPPING LIST ENDPOINTS ============
 
