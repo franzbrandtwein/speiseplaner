@@ -1,0 +1,10 @@
+# Beispiel SMTP-Konfiguration für Speisenplaner
+# Kopiere diese Datei nach /etc/speisenplaner/smtp.conf und passe die Werte an
+
+[smtp]
+server = smtp.example.com
+port = 587
+username = your-email@example.com
+password = your-password
+sender_email = noreply@example.com
+sender_name = Speisenplaner
