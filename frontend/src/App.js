@@ -200,6 +200,15 @@ function AppRouter() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/group"
+        element={
+          <ProtectedRoute>
+            <GroupPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/invite/:token" element={<InvitePage />} />
     </Routes>
   );
 }
