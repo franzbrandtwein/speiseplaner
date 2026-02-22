@@ -39,6 +39,7 @@ const Layout = ({ children }) => {
     { path: "/ingredient-search", label: "Was kochen?", icon: Sparkles },
     { path: "/meal-planner", label: "Speiseplan", icon: Calendar },
     { path: "/shopping-list", label: "Einkaufsliste", icon: ShoppingCart },
+    { path: "/group", label: "Gruppe", icon: Users },
   ];
 
   return (
