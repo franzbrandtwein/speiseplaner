@@ -36,22 +36,25 @@ const LandingPage = () => {
             </span>
           </div>
           
-          {IS_EMERGENT ? (
-            <Button
-              onClick={handleGoogleLogin}
-              data-testid="login-button-nav"
-              className="btn-primary"
-            >
-              <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
-              Anmelden
-            </Button>
-          ) : (
-            <Link to="/auth">
-              <Button data-testid="login-button-nav" className="btn-primary">
+          <div className="flex items-center gap-2">
+            <InstallButton variant="nav" />
+            {IS_EMERGENT ? (
+              <Button
+                onClick={handleGoogleLogin}
+                data-testid="login-button-nav"
+                className="btn-primary"
+              >
+                <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
                 Anmelden
               </Button>
-            </Link>
-          )}
+            ) : (
+              <Link to="/auth">
+                <Button data-testid="login-button-nav" className="btn-primary">
+                  Anmelden
+                </Button>
+              </Link>
+            )}
+          </div>
         </nav>
 
         <div className="relative z-10 max-w-7xl mx-auto px-6 pt-16 pb-24 md:pt-24 md:pb-32">
