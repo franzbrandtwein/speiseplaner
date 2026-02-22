@@ -13,6 +13,8 @@ import RecipeForm from "./pages/RecipeForm";
 import MealPlanner from "./pages/MealPlanner";
 import ShoppingList from "./pages/ShoppingList";
 import IngredientSearch from "./pages/IngredientSearch";
+import GroupPage from "./pages/GroupPage";
+import InvitePage from "./pages/InvitePage";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
