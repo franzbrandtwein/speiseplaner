@@ -559,23 +559,43 @@ async def get_recipes(
     search: Optional[str] = None,
     user: User = Depends(get_current_user)
 ):
-    """Get all recipes with optional filters"""
-    query = {}
+    """Get all recipes with optional filters - eigene + geteilte aus Gruppe"""
+    # User-Doc für group_id holen
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+    
+    # Query für eigene Rezepte ODER geteilte Gruppenrezepte
+    if group_id:
+        # Hole alle Gruppen-Mitglieder
+        group = await db.groups.find_one({"group_id": group_id}, {"_id": 0})
+        member_ids = group.get("member_ids", []) if group else []
+        
+        base_query = {
+            "$or": [
+                {"user_id": user.user_id},  # Eigene Rezepte
+                {"user_id": {"$in": member_ids}, "shared_with_group": True}  # Geteilte Gruppenrezepte
+            ]
+        }
+    else:
+        base_query = {"user_id": user.user_id}
     
     if category:
-        query["category"] = category
+        base_query["category"] = category
     if difficulty:
-        query["difficulty"] = difficulty
+        base_query["difficulty"] = difficulty
     if search:
-        query["name"] = {"$regex": search, "$options": "i"}
+        base_query["name"] = {"$regex": search, "$options": "i"}
     
-    recipes = await db.recipes.find(query, {"_id": 0}).to_list(1000)
+    recipes = await db.recipes.find(base_query, {"_id": 0}).to_list(1000)
     
     for recipe in recipes:
         if isinstance(recipe.get('created_at'), str):
             recipe['created_at'] = datetime.fromisoformat(recipe['created_at'])
         if isinstance(recipe.get('updated_at'), str):
             recipe['updated_at'] = datetime.fromisoformat(recipe['updated_at'])
+        
+        # Markiere ob eigenes Rezept
+        recipe["is_own"] = recipe["user_id"] == user.user_id
         
         ratings = await db.ratings.find({"recipe_id": recipe["recipe_id"]}, {"_id": 0}).to_list(1000)
         if ratings:
