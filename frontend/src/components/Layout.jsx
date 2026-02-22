@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth, API } from "../App";
 import { Button } from "./ui/button";
 import { 
   ChefHat, LayoutDashboard, BookOpen, Calendar, ShoppingCart, 
-  LogOut, Menu, X, User, Sparkles, Users 
+  LogOut, Menu, X, User, Sparkles, Users, RefreshCw
 } from "lucide-react";
+import InstallPrompt from "./InstallPrompt";
 import {
   DropdownMenu,
   DropdownMenuContent,
