@@ -1,5 +1,6 @@
 /**
  * Service Worker Registration for Speisenplaner PWA
+ * Works on HTTPS or localhost. HTTP on non-localhost is skipped gracefully.
  */
 
 const isLocalhost = Boolean(
@@ -8,21 +9,29 @@ const isLocalhost = Boolean(
   window.location.hostname.match(/^127(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$/)
 );
 
-export function register(config) {
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      const swUrl = `${process.env.PUBLIC_URL}/service-worker.js`;
+const isHttps = window.location.protocol === 'https:';
+const swSupported = 'serviceWorker' in navigator;
 
-      if (isLocalhost) {
-        // In development, just check if a service worker exists
-        checkValidServiceWorker(swUrl, config);
-        navigator.serviceWorker.ready.then(() => {
-          console.log('[PWA] App is being served cache-first by a service worker. Learn more: https://cra.link/PWA');
-        });
-      } else {
-        // In production, register the service worker directly
-        registerValidSW(swUrl, config);
-      }
+export function register(config) {
+  // Service workers require HTTPS (except localhost)
+  if (!swSupported || (!isLocalhost && !isHttps)) {
+    console.log('[PWA] Service Worker skipped: requires HTTPS or localhost.');
+    return;
+  }
+
+  window.addEventListener('load', () => {
+    const swUrl = `${process.env.PUBLIC_URL || ''}/service-worker.js`;
+
+    if (isLocalhost) {
+      checkValidServiceWorker(swUrl, config);
+      navigator.serviceWorker.ready.then(() => {
+        console.log('[PWA] Service Worker aktiv (localhost).');
+      });
+    } else {
+      registerValidSW(swUrl, config);
+    }
+  });
+}
     });
   }
 }
