@@ -358,6 +358,26 @@ const RecipeForm = () => {
                   />
                 )}
               </div>
+
+              {/* Mit Gruppe teilen */}
+              {hasGroup && (
+                <div className="flex items-center justify-between p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                  <div className="flex items-center gap-3">
+                    <Users className="w-5 h-5 text-emerald-600" />
+                    <div>
+                      <p className="font-medium text-[var(--text-primary)]">Mit Gruppe teilen</p>
+                      <p className="text-sm text-[var(--text-muted)]">
+                        Alle Gruppenmitglieder können dieses Rezept sehen
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={formData.shared_with_group}
+                    onCheckedChange={(checked) => updateField("shared_with_group", checked)}
+                    data-testid="share-with-group-switch"
+                  />
+                </div>
+              )}
             </div>
           </Card>
 
