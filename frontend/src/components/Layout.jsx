@@ -7,7 +7,7 @@ import {
   ChefHat, LayoutDashboard, BookOpen, Calendar, ShoppingCart, 
   LogOut, Menu, X, User, Sparkles, Users, RefreshCw
 } from "lucide-react";
-import InstallPrompt from "./InstallPrompt";
+import InstallPrompt, { InstallButton } from "./InstallPrompt";
 import {
   DropdownMenu,
   DropdownMenuContent,
