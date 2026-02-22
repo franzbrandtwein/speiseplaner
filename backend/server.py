@@ -156,6 +156,7 @@ class MealPlan(BaseModel):
     model_config = ConfigDict(extra="ignore")
     plan_id: str = Field(default_factory=lambda: f"plan_{uuid.uuid4().hex[:12]}")
     user_id: str
+    group_id: Optional[str] = None  # Für geteilten Gruppenplan
     week_start: str  # ISO date YYYY-MM-DD (Monday)
     days: List[DayPlan] = []
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
