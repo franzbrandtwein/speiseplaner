@@ -207,7 +207,87 @@ class Invitation(BaseModel):
 class InvitationCreate(BaseModel):
     email: EmailStr
 
-# ============ AUTH HELPERS ============
+# ============ EMAIL SERVICE ============
+
+def send_invitation_email(recipient_email: str, inviter_name: str, group_name: str, invitation_token: str, base_url: str) -> bool:
+    """Send invitation email via SMTP"""
+    if not smtp_config:
+        logger.warning("SMTP nicht konfiguriert - Einladung kann nicht per Email gesendet werden")
+        return False
+    
+    try:
+        # Email erstellen
+        msg = MIMEMultipart("alternative")
+        msg["From"] = f"{smtp_config.get('sender_name', 'Speisenplaner')} <{smtp_config.get('sender_email', smtp_config.get('username'))}>"
+        msg["To"] = recipient_email
+        msg["Subject"] = f"Einladung zur Gruppe '{group_name}' im Speisenplaner"
+        
+        invitation_url = f"{base_url}/invite/{invitation_token}"
+        
+        text_content = f"""
+Hallo,
+
+{inviter_name} hat dich eingeladen, der Gruppe "{group_name}" im Speisenplaner beizutreten.
+
+Klicke auf den folgenden Link, um die Einladung anzunehmen:
+{invitation_url}
+
+Die Einladung ist 7 Tage gültig.
+
+Viele Grüße,
+Dein Speisenplaner Team
+        """
+        
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: 'Inter', Arial, sans-serif; background-color: #f9fafb; margin: 0; padding: 20px; }}
+        .container {{ max-width: 500px; margin: 0 auto; background: white; border-radius: 16px; padding: 40px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+        h1 {{ color: #10B981; font-family: 'Playfair Display', serif; margin-bottom: 20px; }}
+        p {{ color: #4B5563; line-height: 1.6; }}
+        .button {{ display: inline-block; background: #10B981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 50px; font-weight: 600; margin: 20px 0; }}
+        .button:hover {{ background: #059669; }}
+        .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #9CA3AF; font-size: 14px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🍳 Du wurdest eingeladen!</h1>
+        <p><strong>{inviter_name}</strong> hat dich eingeladen, der Gruppe <strong>"{group_name}"</strong> im Speisenplaner beizutreten.</p>
+        <p>Als Gruppenmitglied könnt ihr gemeinsam:</p>
+        <ul style="color: #4B5563;">
+            <li>Rezepte teilen</li>
+            <li>Einen gemeinsamen Speiseplan führen</li>
+            <li>Einkaufslisten zusammen verwalten</li>
+        </ul>
+        <a href="{invitation_url}" class="button">Einladung annehmen</a>
+        <div class="footer">
+            <p>Die Einladung ist 7 Tage gültig.</p>
+            <p>Falls du diese Einladung nicht erwartet hast, kannst du diese Email ignorieren.</p>
+        </div>
+    </div>
+</body>
+</html>
+        """
+        
+        msg.attach(MIMEText(text_content, "plain"))
+        msg.attach(MIMEText(html_content, "html"))
+        
+        # SMTP-Verbindung
+        server = smtplib.SMTP(smtp_config.get('server'), int(smtp_config.get('port', 587)))
+        server.starttls()
+        server.login(smtp_config.get('username'), smtp_config.get('password'))
+        server.sendmail(smtp_config.get('username'), recipient_email, msg.as_string())
+        server.quit()
+        
+        logger.info(f"Einladungs-Email an {recipient_email} gesendet")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Senden der Email: {str(e)}")
+        return False
 
 # ============ AUTH HELPERS ============
 
