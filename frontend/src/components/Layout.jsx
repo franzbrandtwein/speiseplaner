@@ -180,6 +180,10 @@ const Layout = ({ children }) => {
               })}
             </nav>
             
+            <div className="absolute bottom-16 left-4 right-4">
+              <InstallButton variant="nav" />
+            </div>
+
             <div className="absolute bottom-4 left-4 right-4">
               <Button 
                 onClick={handleLogout}
