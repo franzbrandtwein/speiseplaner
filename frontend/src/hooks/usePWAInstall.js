@@ -1,48 +1,41 @@
 import { useState, useEffect } from 'react';
 
+// Synchronously check if app is in standalone mode (already installed)
+function checkIsStandalone() {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true
+  );
+}
+
 /**
  * Hook to handle PWA install prompt (Add to Home Screen)
  */
 export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isInstallable, setIsInstallable] = useState(false);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
+
+  // Initialize synchronously on first render - no useEffect delay
+  const [isInstalled, setIsInstalled] = useState(() => checkIsStandalone());
+  const [isInstallable, setIsInstallable] = useState(() => !checkIsStandalone());
+  const [isIOS, setIsIOS] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return /iphone|ipad|ipod/i.test(navigator.userAgent);
+  });
 
   useEffect(() => {
-    // Check if already installed (standalone mode)
-    const checkInstalled = () => {
-      if (
-        window.matchMedia('(display-mode: standalone)').matches ||
-        window.navigator.standalone === true
-      ) {
-        setIsInstalled(true);
-        return true;
-      }
-      return false;
-    };
-
-    const alreadyInstalled = checkInstalled();
-    if (alreadyInstalled) return;
-
-    // Check for iOS
-    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    setIsIOS(ios);
-    if (ios) {
-      setIsInstallable(true);
+    // Re-check standalone on mount (in case matchMedia wasn't ready at init)
+    if (checkIsStandalone()) {
+      setIsInstalled(true);
+      setIsInstallable(false);
       return;
     }
 
-    // For all other browsers: show button immediately as fallback
-    // The button will trigger the native prompt if available,
-    // or show manual instructions otherwise
-    setIsInstallable(true);
-
-    // Listen for beforeinstallprompt (Chrome/Android/Edge)
+    // Listen for native beforeinstallprompt (Chrome/Android/Edge)
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setIsInstallable(true);
+      // isInstallable is already true, just update prompt reference
     };
 
     // Listen for appinstalled
