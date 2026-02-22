@@ -215,6 +215,25 @@ const Layout = ({ children }) => {
           {children}
         </div>
       </main>
+
+      {/* PWA Install Prompt */}
+      <InstallPrompt />
+
+      {/* PWA Update Banner */}
+      {updateAvailable && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-emerald-600 text-white px-4 py-2 flex items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-2 text-sm">
+            <RefreshCw className="w-4 h-4 flex-shrink-0" />
+            <span>Neue Version verfügbar!</span>
+          </div>
+          <button
+            onClick={handleApplyUpdate}
+            className="flex-shrink-0 bg-white text-emerald-700 text-xs font-semibold px-3 py-1 rounded-lg hover:bg-emerald-50 transition-colors"
+          >
+            Jetzt aktualisieren
+          </button>
+        </div>
+      )}
     </div>
   );
 };
