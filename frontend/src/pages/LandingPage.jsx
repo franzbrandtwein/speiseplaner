@@ -1,6 +1,7 @@
 import { ChefHat, Calendar, ShoppingCart, Star, Clock, Users } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Link } from "react-router-dom";
+import { InstallButton } from "../components/InstallPrompt";
 
 // Check if running on Emergent platform
 const IS_EMERGENT = window.location.hostname.includes('emergentagent.com');
