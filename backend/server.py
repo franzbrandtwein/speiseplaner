@@ -14,8 +14,23 @@ import hashlib
 import secrets
 from datetime import datetime, timezone, timedelta
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from pathlib import Path
+import configparser
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# SMTP Config laden
+SMTP_CONFIG_PATH = Path("/etc/speisenplaner/smtp.conf")
+smtp_config = {}
+if SMTP_CONFIG_PATH.exists():
+    config = configparser.ConfigParser()
+    config.read(SMTP_CONFIG_PATH)
+    if 'smtp' in config:
+        smtp_config = dict(config['smtp'])
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
