@@ -181,6 +181,10 @@ yarn build
 info "Installiere serve für Frontend..."
 $SUDO npm install -g serve
 
+# Pfad zu serve ermitteln
+SERVE_PATH=$(which serve)
+info "Serve installiert unter: $SERVE_PATH"
+
 # ============================================
 # Systemd Services erstellen
 # ============================================
@@ -216,7 +220,8 @@ After=network.target kochplaner-backend.service
 Type=simple
 User=$SERVICE_USER
 WorkingDirectory=$PROJECT_DIR/frontend
-ExecStart=/usr/bin/serve -s build -l 3000
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=$SERVE_PATH -s build -l 3000
 Restart=always
 RestartSec=10
 
