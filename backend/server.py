@@ -676,14 +676,17 @@ class ImportRequest(BaseModel):
     url: str
 
 def parse_iso_duration(duration) -> Optional[int]:
-    """Convert ISO 8601 duration (PT30M, PT1H30M) to minutes"""
+    """Convert ISO 8601 duration (PT30M, PT1H30M, P0DT0H50M) to minutes"""
     if not duration:
         return None
     try:
         s = str(duration)
+        days  = re.search(r'(\d+)D', s)
         hours = re.search(r'(\d+)H', s)
-        mins = re.search(r'(\d+)M', s)
+        mins  = re.search(r'(\d+)M', s)
         total = 0
+        if days:
+            total += int(days.group(1)) * 1440
         if hours:
             total += int(hours.group(1)) * 60
         if mins:
@@ -774,19 +777,42 @@ def build_recipe_from_jsonld(jsonld: dict) -> dict:
     raw_ingredients = jsonld.get('recipeIngredient', [])
     ingredients = [parse_ingredient_string(str(i)) for i in raw_ingredients if i]
 
-    # Instructions
+    # Instructions – handle flat list, HowToStep, and Chefkoch-style HowToSection
     raw_instructions = jsonld.get('recipeInstructions', [])
     instructions = []
-    if isinstance(raw_instructions, list):
-        for step in raw_instructions:
+
+    def extract_steps(steps):
+        """Recursively extract text from HowToStep / HowToSection / plain strings."""
+        result = []
+        if not steps:
+            return result
+        items = steps if isinstance(steps, list) else [steps]
+        for step in items:
             if isinstance(step, str) and step.strip():
-                instructions.append(step.strip())
+                result.append(step.strip())
             elif isinstance(step, dict):
-                text = step.get('text') or step.get('name') or ''
-                if text.strip():
-                    instructions.append(text.strip())
-    elif isinstance(raw_instructions, str):
-        instructions = [s.strip() for s in re.split(r'\n|\.\s+', raw_instructions) if s.strip() and len(s.strip()) > 10]
+                step_type = step.get('@type', '')
+                if step_type == 'HowToSection':
+                    # Chefkoch: nested section with itemListElement
+                    result.extend(extract_steps(step.get('itemListElement', [])))
+                elif step_type in ('HowToStep', ''):
+                    text = (step.get('text') or step.get('name') or '').strip()
+                    if text:
+                        result.append(text)
+                else:
+                    # Unknown type – try text/name anyway
+                    text = (step.get('text') or step.get('name') or '').strip()
+                    if text:
+                        result.append(text)
+                    # Also check nested itemListElement
+                    if step.get('itemListElement'):
+                        result.extend(extract_steps(step['itemListElement']))
+        return result
+
+    if isinstance(raw_instructions, list):
+        instructions = extract_steps(raw_instructions)
+    elif isinstance(raw_instructions, str) and raw_instructions.strip():
+        instructions = [s.strip() for s in re.split(r'\n+', raw_instructions) if s.strip() and len(s.strip()) > 10]
 
     # Times
     prep_time = parse_iso_duration(jsonld.get('prepTime'))
