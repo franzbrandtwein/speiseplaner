@@ -146,10 +146,16 @@ class RatingCreate(BaseModel):
     stars: int = Field(ge=1, le=5)
     text: Optional[str] = None
 
+class SideDishEntry(BaseModel):
+    recipe_id: str
+    recipe_name: str
+    portions: int = 2
+
 class MealSlot(BaseModel):
     recipe_id: Optional[str] = None
     recipe_name: Optional[str] = None
     portions: int = 2
+    side_dishes: List[SideDishEntry] = []
 
 class DayPlan(BaseModel):
     date: str  # ISO date string YYYY-MM-DD
@@ -1233,7 +1239,7 @@ async def get_shopping_list(week_start: str, user: User = Depends(get_current_us
     
     recipe_ids = set()
     recipe_portions = {}
-    
+
     for day in plan.get("days", []):
         for meal_type in ["breakfast", "lunch", "dinner"]:
             meal = day.get(meal_type)
@@ -1242,6 +1248,13 @@ async def get_shopping_list(week_start: str, user: User = Depends(get_current_us
                 recipe_ids.add(rid)
                 portions = meal.get("portions", 2)
                 recipe_portions[rid] = recipe_portions.get(rid, 0) + portions
+                # Also collect side dish portions
+                for sd in meal.get("side_dishes", []):
+                    if sd.get("recipe_id"):
+                        sd_id = sd["recipe_id"]
+                        sd_portions = sd.get("portions", 2)
+                        recipe_ids.add(sd_id)
+                        recipe_portions[sd_id] = recipe_portions.get(sd_id, 0) + sd_portions
     
     ingredients_map = {}
     

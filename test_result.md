@@ -207,14 +207,15 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 1
+  test_sequence: 2
   run_ui: false
 
 test_plan:
   current_focus:
-    - "PWA Manifest"
-    - "Service Worker"
-    - "InstallPrompt Komponente"
+    - "Meal Planner Slot Configuration Dialog - Phase 1 (Recipe Selection)"
+    - "Meal Planner Slot Configuration Dialog - Phase 2 (Meal Configuration)"
+    - "Meal Planner Slot Display with Side Dishes"
+    - "Meal Plan Save and Data Persistence"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -243,6 +244,54 @@ test_plan:
         agent: "testing"
         comment: "✅ TESTED: Beilagen section displays correctly in recipe detail sidebar. Shows linked recipes with image, name, category badge, and cooking time. Side dish links are clickable and navigate to the respective recipe pages. UI is clean with hover effects and proper styling."
 
+  - task: "Meal Planner Slot Configuration Dialog - Phase 1 (Recipe Selection)"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/MealPlanner.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Phase 1 'Rezept auswählen' dialog working perfectly. Empty meal slot click opens dialog with search field (data-testid='recipe-search-dialog'). Recipe list displays with images, names, and categories. Recipes with linked side dishes show green badge (e.g., '1 Beilage', '2 Beilagen'). Found 4 recipes with side dish badges. Recipe selection transitions to Phase 2 correctly."
+
+  - task: "Meal Planner Slot Configuration Dialog - Phase 2 (Meal Configuration)"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/MealPlanner.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Phase 2 'Mahlzeit konfigurieren' dialog fully functional. Main recipe displays in green box with image, name, and category. Portions control with +/- buttons and number input works correctly. 'Beilagen' section present with 'Beilage hinzufügen…' search input. Side dish dropdown appears on input, displays available recipes with images. Side dishes can be added, each with own portions control (+/- buttons) and remove (×) button. 'Übernehmen' button confirms and closes dialog."
+
+  - task: "Meal Planner Slot Display with Side Dishes"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/MealPlanner.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Meal slot display working correctly. Main recipe name displayed with portions input field. Side dishes listed below with '↳' prefix, recipe name, portions input, and hover-visible × remove button. Tested with 'Spaghetti Carbonara' (4 portions) as main and 'Schnitzel mit Beilagen' (3 portions) as side dish. All controls functional."
+
+  - task: "Meal Plan Save and Data Persistence"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/MealPlanner.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Save functionality and data persistence verified. 'Speichern' button (data-testid='save-plan-button') successfully saves meal plan. After page reload, all data persists correctly: main recipe name, main portions (4), side dish name, and side dish portions (3). Backend API POST /api/mealplans returns 200 OK. GET /api/mealplans returns saved data correctly."
+
 agent_communication:
   - agent: "main"
     message: "PWA-Implementierung abgeschlossen. SW ist aktiv (verified via browser), Manifest geladen (10 Icons), Offline-Seite funktioniert. InstallPrompt und Update-Banner in Layout.jsx integriert."
@@ -250,3 +299,5 @@ agent_communication:
     message: "✅ PWA Install Button Test Complete: Verified InstallPrompt component on landing page (https://feast-organizer-1.preview.emergentagent.com). Desktop: 'Installieren' button visible in nav, modal opens with browser-specific instructions (Chrome/Edge detected), modal closes on 'Verstanden' click. Mobile (390x844): Install icon visible, modal functionality working. All tests passed."
   - agent: "testing"
     message: "✅ Beilagen Feature Test Complete: Tested complete flow from RecipeForm to RecipeDetail. Login successful with import_test@test.de. Created recipe 'Schnitzel mit Beilagen' with side dish 'Spaghetti Carbonara'. Search input, dropdown, chip selection, save, and display all working perfectly. Side dish navigation verified. No console errors. All 21 test steps passed successfully."
+  - agent: "testing"
+    message: "✅ MEAL PLANNER SLOT CONFIGURATION TEST COMPLETE: Comprehensive test of new meal planner feature with side dishes. All 17 test steps passed successfully. Phase 1 (recipe selection) and Phase 2 (meal configuration) dialogs working perfectly. Side dish badges display correctly (found 4 recipes with badges). Side dish search, dropdown, add/remove, and portions controls all functional. Meal slot displays main recipe and side dishes with correct formatting. Save and data persistence verified - all data intact after page reload. Backend APIs responding correctly (200 OK). No console errors. Screenshots captured at each phase."
