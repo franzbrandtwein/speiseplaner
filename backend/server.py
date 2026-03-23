@@ -110,6 +110,7 @@ class Recipe(BaseModel):
     nutrition: Optional[NutritionInfo] = None
     allergens: List[str] = []
     cost_per_portion: Optional[float] = None
+    side_dishes: List[str] = []  # list of recipe_ids
     shared_with_group: bool = False  # Mit Gruppe teilen
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -128,6 +129,7 @@ class RecipeCreate(BaseModel):
     nutrition: Optional[NutritionInfo] = None
     allergens: List[str] = []
     cost_per_portion: Optional[float] = None
+    side_dishes: List[str] = []  # list of recipe_ids
     shared_with_group: bool = False
 
 class Rating(BaseModel):
@@ -1024,16 +1026,16 @@ async def import_recipe_save(recipe_data: RecipeCreate, user: User = Depends(get
 
 @api_router.get("/recipes/{recipe_id}")
 async def get_recipe(recipe_id: str, user: User = Depends(get_current_user)):
-    """Get a single recipe with ratings"""
+    """Get a single recipe with ratings and populated side dishes"""
     recipe = await db.recipes.find_one({"recipe_id": recipe_id}, {"_id": 0})
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
-    
+
     ratings = await db.ratings.find({"recipe_id": recipe_id}, {"_id": 0}).to_list(1000)
     for rating in ratings:
         if isinstance(rating.get('created_at'), str):
             rating['created_at'] = datetime.fromisoformat(rating['created_at'])
-    
+
     recipe["ratings"] = ratings
     if ratings:
         recipe["avg_rating"] = sum(r["stars"] for r in ratings) / len(ratings)
@@ -1041,7 +1043,21 @@ async def get_recipe(recipe_id: str, user: User = Depends(get_current_user)):
     else:
         recipe["avg_rating"] = 0
         recipe["rating_count"] = 0
-    
+
+    # Populate side dish details
+    side_dish_ids = recipe.get("side_dishes", [])
+    if side_dish_ids:
+        side_dish_docs = await db.recipes.find(
+            {"recipe_id": {"$in": side_dish_ids}},
+            {"_id": 0, "recipe_id": 1, "name": 1, "image_url": 1,
+             "category": 1, "difficulty": 1, "prep_time": 1, "cook_time": 1, "portions": 1}
+        ).to_list(50)
+        # preserve the order from side_dish_ids
+        id_map = {d["recipe_id"]: d for d in side_dish_docs}
+        recipe["side_dishes_detail"] = [id_map[sid] for sid in side_dish_ids if sid in id_map]
+    else:
+        recipe["side_dishes_detail"] = []
+
     return recipe
 
 @api_router.put("/recipes/{recipe_id}")

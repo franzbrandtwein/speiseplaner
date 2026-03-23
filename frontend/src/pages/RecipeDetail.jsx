@@ -9,7 +9,7 @@ import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { 
   ChefHat, Clock, Users, Star, ArrowLeft, Edit, Trash2, 
-  AlertTriangle, DollarSign, Flame 
+  AlertTriangle, DollarSign, Flame, UtensilsCrossed
 } from "lucide-react";
 import {
   AlertDialog,
@@ -387,6 +387,56 @@ const RecipeDetail = () => {
                       {allergen}
                     </span>
                   ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Side Dishes */}
+            {recipe.side_dishes_detail?.length > 0 && (
+              <Card className="p-6 bg-white border-gray-100">
+                <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+                  <UtensilsCrossed className="w-5 h-5 text-emerald-500" />
+                  Beilagen
+                </h2>
+                <div className="space-y-3">
+                  {recipe.side_dishes_detail.map(side => {
+                    const sideTime = (side.prep_time || 0) + (side.cook_time || 0);
+                    return (
+                      <Link
+                        key={side.recipe_id}
+                        to={`/recipes/${side.recipe_id}`}
+                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-emerald-50 border border-gray-100 hover:border-emerald-200 transition-all group"
+                      >
+                        {side.image_url ? (
+                          <img
+                            src={side.image_url}
+                            alt={side.name}
+                            className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0 text-xl">
+                            🍽️
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm text-[var(--text-primary)] truncate group-hover:text-emerald-700">
+                            {side.name}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-xs text-emerald-600 bg-emerald-50 rounded-full px-2 py-0.5">
+                              {side.category}
+                            </span>
+                            {sideTime > 0 && (
+                              <span className="text-xs text-[var(--text-muted)] flex items-center gap-1">
+                                <Clock className="w-3 h-3" />{sideTime} Min
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <ChefHat className="w-4 h-4 text-gray-300 group-hover:text-emerald-400 flex-shrink-0 transition-colors" />
+                      </Link>
+                    );
+                  })}
                 </div>
               </Card>
             )}

@@ -18,7 +18,7 @@ import {
 import { Checkbox } from "../components/ui/checkbox";
 import { Switch } from "../components/ui/switch";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, Save, Image, Users } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, Image, Users, Search, X } from "lucide-react";
 
 const RecipeForm = () => {
   const { id } = useParams();
@@ -31,7 +31,10 @@ const RecipeForm = () => {
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState({ categories: [], difficulties: [], allergens: [] });
   const [hasGroup, setHasGroup] = useState(false);
-  
+  const [allRecipes, setAllRecipes] = useState([]);
+  const [sideDishSearch, setSideDishSearch] = useState("");
+  const [showSideDishDropdown, setShowSideDishDropdown] = useState(false);
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -52,18 +55,21 @@ const RecipeForm = () => {
       fiber: ""
     },
     allergens: [],
+    side_dishes: [],
     shared_with_group: false
   });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [catRes, groupRes] = await Promise.all([
+        const [catRes, groupRes, recipesRes] = await Promise.all([
           axios.get(`${API}/categories`, { withCredentials: true }),
-          axios.get(`${API}/groups/my`, { withCredentials: true })
+          axios.get(`${API}/groups/my`, { withCredentials: true }),
+          axios.get(`${API}/recipes`, { withCredentials: true }),
         ]);
         setCategories(catRes.data);
         setHasGroup(groupRes.data.group !== null);
+        setAllRecipes(recipesRes.data || []);
         
         if (isEditing) {
           const recipeRes = await axios.get(`${API}/recipes/${id}`, { withCredentials: true });
@@ -82,6 +88,7 @@ const RecipeForm = () => {
             instructions: recipe.instructions?.length ? recipe.instructions : [""],
             nutrition: recipe.nutrition || { calories: "", protein: "", carbs: "", fat: "", fiber: "" },
             allergens: recipe.allergens || [],
+            side_dishes: recipe.side_dishes || [],
             shared_with_group: recipe.shared_with_group || false
           });
         } else if (fromImport) {
@@ -104,6 +111,7 @@ const RecipeForm = () => {
                 instructions: recipe.instructions?.length ? recipe.instructions : [""],
                 nutrition: recipe.nutrition || { calories: "", protein: "", carbs: "", fat: "", fiber: "" },
                 allergens: recipe.allergens || [],
+                side_dishes: recipe.side_dishes || [],
                 shared_with_group: recipe.shared_with_group || false
               });
               sessionStorage.removeItem('import_recipe_draft');
@@ -581,6 +589,105 @@ const RecipeForm = () => {
                   className="input-field mt-1"
                 />
               </div>
+            </div>
+          </Card>
+
+          {/* Beilagen */}
+          <Card className="p-6 bg-white border-gray-100">
+            <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] mb-2">
+              Beilagen
+            </h2>
+            <p className="text-sm text-[var(--text-muted)] mb-4">
+              Verknüpfe andere Rezepte als Beilage zu diesem Gericht.
+            </p>
+
+            {/* Selected side dishes */}
+            {formData.side_dishes.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {formData.side_dishes.map(sid => {
+                  const r = allRecipes.find(r => r.recipe_id === sid);
+                  if (!r) return null;
+                  return (
+                    <div
+                      key={sid}
+                      className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl pl-3 pr-2 py-1.5"
+                    >
+                      {r.image_url && (
+                        <img src={r.image_url} alt={r.name} className="w-6 h-6 rounded-full object-cover flex-shrink-0" />
+                      )}
+                      <span className="text-sm font-medium text-emerald-800">{r.name}</span>
+                      <span className="text-xs text-emerald-600 bg-emerald-100 rounded-full px-1.5 py-0.5">{r.category}</span>
+                      <button
+                        type="button"
+                        onClick={() => updateField("side_dishes", formData.side_dishes.filter(x => x !== sid))}
+                        className="ml-1 w-5 h-5 rounded-full hover:bg-emerald-200 flex items-center justify-center text-emerald-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Search & add */}
+            <div className="relative">
+              <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 focus-within:border-emerald-400 focus-within:ring-1 focus-within:ring-emerald-400 bg-white">
+                <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Rezept suchen und hinzufügen…"
+                  value={sideDishSearch}
+                  onChange={e => { setSideDishSearch(e.target.value); setShowSideDishDropdown(true); }}
+                  onFocus={() => setShowSideDishDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowSideDishDropdown(false), 200)}
+                  className="flex-1 text-sm outline-none bg-transparent text-[var(--text-primary)] placeholder:text-gray-400"
+                />
+              </div>
+
+              {showSideDishDropdown && (
+                <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                  {allRecipes
+                    .filter(r =>
+                      r.recipe_id !== id &&
+                      !formData.side_dishes.includes(r.recipe_id) &&
+                      (sideDishSearch === "" || r.name.toLowerCase().includes(sideDishSearch.toLowerCase()))
+                    )
+                    .slice(0, 8)
+                    .map(r => (
+                      <button
+                        key={r.recipe_id}
+                        type="button"
+                        onMouseDown={() => {
+                          updateField("side_dishes", [...formData.side_dishes, r.recipe_id]);
+                          setSideDishSearch("");
+                          setShowSideDishDropdown(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-emerald-50 text-left transition-colors"
+                      >
+                        {r.image_url ? (
+                          <img src={r.image_url} alt={r.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0 text-sm">🍽️</div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-[var(--text-primary)] truncate">{r.name}</p>
+                          <p className="text-xs text-[var(--text-muted)]">{r.category}</p>
+                        </div>
+                        <Plus className="w-4 h-4 text-emerald-500 flex-shrink-0 ml-auto" />
+                      </button>
+                    ))}
+                  {allRecipes.filter(r =>
+                    r.recipe_id !== id &&
+                    !formData.side_dishes.includes(r.recipe_id) &&
+                    (sideDishSearch === "" || r.name.toLowerCase().includes(sideDishSearch.toLowerCase()))
+                  ).length === 0 && (
+                    <div className="px-4 py-3 text-sm text-[var(--text-muted)] text-center">
+                      Keine Rezepte gefunden
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </Card>
 

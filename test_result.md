@@ -219,8 +219,34 @@ test_plan:
   test_all: false
   test_priority: "high_first"
 
+  - task: "Beilagen Feature in RecipeForm"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/RecipeForm.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Beilagen (side dishes) feature fully functional. Search input with placeholder 'Rezept suchen und hinzufügen…' works correctly. Dropdown opens on click/focus, displays available recipes with images, names, and categories. Selected recipes appear as green chips with X buttons for removal. Multiple side dishes can be added. Form saves successfully with side dishes."
+
+  - task: "Beilagen Display in RecipeDetail"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/RecipeDetail.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Beilagen section displays correctly in recipe detail sidebar. Shows linked recipes with image, name, category badge, and cooking time. Side dish links are clickable and navigate to the respective recipe pages. UI is clean with hover effects and proper styling."
+
 agent_communication:
   - agent: "main"
     message: "PWA-Implementierung abgeschlossen. SW ist aktiv (verified via browser), Manifest geladen (10 Icons), Offline-Seite funktioniert. InstallPrompt und Update-Banner in Layout.jsx integriert."
   - agent: "testing"
     message: "✅ PWA Install Button Test Complete: Verified InstallPrompt component on landing page (https://feast-organizer-1.preview.emergentagent.com). Desktop: 'Installieren' button visible in nav, modal opens with browser-specific instructions (Chrome/Edge detected), modal closes on 'Verstanden' click. Mobile (390x844): Install icon visible, modal functionality working. All tests passed."
+  - agent: "testing"
+    message: "✅ Beilagen Feature Test Complete: Tested complete flow from RecipeForm to RecipeDetail. Login successful with import_test@test.de. Created recipe 'Schnitzel mit Beilagen' with side dish 'Spaghetti Carbonara'. Search input, dropdown, chip selection, save, and display all working perfectly. Side dish navigation verified. No console errors. All 21 test steps passed successfully."
