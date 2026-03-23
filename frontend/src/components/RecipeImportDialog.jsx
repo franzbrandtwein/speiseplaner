@@ -237,6 +237,7 @@ const RecipeImportDialog = ({ open, onClose, onImported }) => {
                 onClick={handleFetch}
                 disabled={!url.trim() || loading}
                 className="btn-primary flex-shrink-0"
+                type="button"
               >
                 {loading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
