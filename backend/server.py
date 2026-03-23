@@ -12,7 +12,10 @@ import uuid
 import httpx
 import hashlib
 import secrets
+import json
+import re
 from datetime import datetime, timezone, timedelta
+from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 import smtplib
 from email.mime.text import MIMEText
@@ -662,6 +665,336 @@ async def search_by_ingredients(request: Request, user: User = Depends(get_curre
         "total_found": len(results),
         "searched_ingredients": available_ingredients
     }
+
+
+
+# ============================================================
+# RECIPE IMPORT FROM URL (REWE & other sites)
+# ============================================================
+
+class ImportRequest(BaseModel):
+    url: str
+
+def parse_iso_duration(duration) -> Optional[int]:
+    """Convert ISO 8601 duration (PT30M, PT1H30M) to minutes"""
+    if not duration:
+        return None
+    try:
+        s = str(duration)
+        hours = re.search(r'(\d+)H', s)
+        mins = re.search(r'(\d+)M', s)
+        total = 0
+        if hours:
+            total += int(hours.group(1)) * 60
+        if mins:
+            total += int(mins.group(1))
+        return total if total > 0 else None
+    except:
+        return None
+
+def parse_ingredient_string(raw: str) -> dict:
+    """Parse '200 g Spaghetti' or '2 Eier' -> {name, amount, unit}"""
+    raw = raw.strip()
+    # Pattern: optional number + optional unit + rest
+    pattern = r'^([\d,./½¼¾⅓⅔]+)\s*([a-zA-ZäöüÄÖÜ]+\.?)?\s+(.+)$'
+    m = re.match(pattern, raw)
+    if m:
+        amount = m.group(1).replace(',', '.')
+        unit_raw = (m.group(2) or '').strip()
+        name = m.group(3).strip()
+        unit_map = {
+            'g': 'g', 'kg': 'kg', 'ml': 'ml', 'l': 'l', 'L': 'l',
+            'EL': 'EL', 'TL': 'TL', 'Stück': 'Stück', 'Stk': 'Stück',
+            'Stk.': 'Stück', 'Prise': 'Prise', 'Prisen': 'Prise',
+            'Bund': 'Bund', 'Zehe': 'Zehe', 'Zehen': 'Zehe',
+            'Scheibe': 'Scheibe', 'Scheiben': 'Scheibe',
+            'Dose': 'Dose', 'Glas': 'Glas', 'Pck': 'Pck.',
+            'Pck.': 'Pck.', 'Pkg': 'Pck.', 'Becher': 'Becher',
+        }
+        unit = unit_map.get(unit_raw, unit_raw or 'Stück')
+        return {"name": name, "amount": amount, "unit": unit}
+    else:
+        # No amount/unit found - try just number at start
+        m2 = re.match(r'^([\d,./]+)\s+(.+)$', raw)
+        if m2:
+            return {"name": m2.group(2).strip(), "amount": m2.group(1), "unit": "Stück"}
+        return {"name": raw, "amount": "1", "unit": "Stück"}
+
+def map_category(keywords) -> str:
+    kw_lower = ' '.join([k.lower() for k in (keywords or [])])
+    if any(x in kw_lower for x in ['frühstück', 'breakfast', 'müsli', 'porridge', 'brunch']):
+        return 'Frühstück'
+    if any(x in kw_lower for x in ['suppe', 'soup', 'eintopf', 'brühe']):
+        return 'Suppe'
+    if any(x in kw_lower for x in ['salat', 'salad']):
+        return 'Salat'
+    if any(x in kw_lower for x in ['dessert', 'kuchen', 'torte', 'süß', 'eis', 'gebäck', 'muffin', 'keks', 'backrezept']):
+        return 'Dessert'
+    if any(x in kw_lower for x in ['snack', 'fingerfood', 'dip', 'aufstrich']):
+        return 'Snack'
+    if any(x in kw_lower for x in ['vorspeise', 'starter', 'appetizer']):
+        return 'Vorspeise'
+    if any(x in kw_lower for x in ['getränk', 'drink', 'smoothie', 'saft', 'cocktail']):
+        return 'Getränk'
+    return 'Hauptgericht'
+
+def map_difficulty(level) -> str:
+    if not level:
+        return 'mittel'
+    level = str(level).lower()
+    if any(x in level for x in ['easy', 'einfach', 'simpel', 'leicht', 'anfänger']):
+        return 'leicht'
+    if any(x in level for x in ['hard', 'schwer', 'aufwändig', 'komplex', 'fortgeschritten']):
+        return 'schwer'
+    return 'mittel'
+
+def extract_jsonld_recipe(html: str) -> Optional[dict]:
+    """Extract Schema.org Recipe from JSON-LD blocks in HTML"""
+    blocks = re.findall(
+        r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+        html, re.DOTALL | re.IGNORECASE
+    )
+    for block in blocks:
+        try:
+            data = json.loads(block.strip())
+            # Handle @graph wrapper
+            if isinstance(data, dict) and data.get('@graph'):
+                data = data['@graph']
+            items = data if isinstance(data, list) else [data]
+            for item in items:
+                if isinstance(item, dict) and item.get('@type') == 'Recipe':
+                    return item
+        except:
+            continue
+    return None
+
+def build_recipe_from_jsonld(jsonld: dict) -> dict:
+    """Convert Schema.org Recipe JSON-LD to our recipe format"""
+    # Ingredients
+    raw_ingredients = jsonld.get('recipeIngredient', [])
+    ingredients = [parse_ingredient_string(str(i)) for i in raw_ingredients if i]
+
+    # Instructions
+    raw_instructions = jsonld.get('recipeInstructions', [])
+    instructions = []
+    if isinstance(raw_instructions, list):
+        for step in raw_instructions:
+            if isinstance(step, str) and step.strip():
+                instructions.append(step.strip())
+            elif isinstance(step, dict):
+                text = step.get('text') or step.get('name') or ''
+                if text.strip():
+                    instructions.append(text.strip())
+    elif isinstance(raw_instructions, str):
+        instructions = [s.strip() for s in re.split(r'\n|\.\s+', raw_instructions) if s.strip() and len(s.strip()) > 10]
+
+    # Times
+    prep_time = parse_iso_duration(jsonld.get('prepTime'))
+    total_time = parse_iso_duration(jsonld.get('totalTime'))
+    cook_time_raw = parse_iso_duration(jsonld.get('cookTime'))
+    if cook_time_raw is None and total_time and prep_time:
+        cook_time_raw = max(0, total_time - prep_time)
+    elif cook_time_raw is None and total_time:
+        cook_time_raw = total_time
+
+    # Servings
+    portions = 4
+    yield_val = jsonld.get('recipeYield', jsonld.get('yield'))
+    if yield_val:
+        s = str(yield_val[0] if isinstance(yield_val, list) else yield_val)
+        nums = re.findall(r'\d+', s)
+        if nums:
+            portions = max(1, int(nums[0]))
+
+    # Nutrition
+    nutrition = None
+    nutr = jsonld.get('nutrition', {})
+    if nutr and isinstance(nutr, dict):
+        def pn(val):
+            if not val:
+                return None
+            nums = re.findall(r'[\d.]+', str(val))
+            return float(nums[0]) if nums else None
+        cal = pn(nutr.get('calories'))
+        nutrition = {
+            "calories": int(cal) if cal else None,
+            "protein": pn(nutr.get('proteinContent')),
+            "carbs": pn(nutr.get('carbohydrateContent')),
+            "fat": pn(nutr.get('fatContent')),
+            "fiber": pn(nutr.get('fiberContent')),
+        }
+        if not any(nutrition.values()):
+            nutrition = None
+
+    # Image
+    image = jsonld.get('image')
+    if isinstance(image, list):
+        image = image[0]
+    if isinstance(image, dict):
+        image = image.get('url') or image.get('@id')
+    if image and not str(image).startswith('http'):
+        image = None
+
+    # Category
+    keywords = []
+    kw = jsonld.get('keywords', '')
+    if isinstance(kw, str):
+        keywords = [k.strip() for k in kw.split(',') if k.strip()]
+    elif isinstance(kw, list):
+        keywords = kw
+    cat_raw = jsonld.get('recipeCategory', '')
+    if isinstance(cat_raw, list):
+        cat_raw = cat_raw[0] if cat_raw else ''
+    category = map_category(keywords + ([str(cat_raw)] if cat_raw else []))
+
+    # Difficulty
+    difficulty_raw = jsonld.get('difficulty') or jsonld.get('recipeDifficulty')
+    difficulty = map_difficulty(difficulty_raw)
+
+    return {
+        "name": (jsonld.get('name') or 'Importiertes Rezept').strip(),
+        "description": (jsonld.get('description') or '').strip() or None,
+        "ingredients": ingredients,
+        "instructions": instructions,
+        "portions": portions,
+        "prep_time": prep_time,
+        "cook_time": cook_time_raw,
+        "difficulty": difficulty,
+        "category": category,
+        "image_url": str(image) if image else None,
+        "nutrition": nutrition,
+        "allergens": [],
+        "shared_with_group": False,
+    }
+
+async def parse_with_llm(html: str, url: str) -> Optional[dict]:
+    """Use LLM to extract recipe data from HTML when JSON-LD is unavailable"""
+    try:
+        llm_key = os.environ.get('EMERGENT_LLM_KEY')
+        if not llm_key:
+            return None
+
+        # Clean HTML: remove scripts, styles, nav → plain text
+        clean = re.sub(r'<script[^>]*>.*?</script>', ' ', html, flags=re.DOTALL | re.IGNORECASE)
+        clean = re.sub(r'<style[^>]*>.*?</style>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
+        clean = re.sub(r'<nav[^>]*>.*?</nav>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
+        clean = re.sub(r'<header[^>]*>.*?</header>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
+        clean = re.sub(r'<footer[^>]*>.*?</footer>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
+        clean = re.sub(r'<[^>]+>', ' ', clean)
+        clean = re.sub(r'&[a-z]+;', ' ', clean)
+        clean = re.sub(r'\s+', ' ', clean).strip()
+        clean = clean[:6000]  # Limit tokens
+
+        chat = LlmChat(
+            api_key=llm_key,
+            session_id=f"recipe_import_{uuid.uuid4().hex[:8]}",
+            system_message="""Du bist ein Rezept-Extraktor. Extrahiere Rezeptdaten aus dem gegebenen Text und gib exakt dieses JSON zurück (kein anderer Text):
+{
+  "name": "string",
+  "description": "string oder null",
+  "ingredients": [{"name": "string", "amount": "string", "unit": "string"}],
+  "instructions": ["string"],
+  "portions": number,
+  "prep_time": number_in_minutes_or_null,
+  "cook_time": number_in_minutes_or_null,
+  "difficulty": "leicht|mittel|schwer",
+  "category": "Frühstück|Suppe|Salat|Hauptgericht|Dessert|Snack|Vorspeise|Getränk",
+  "nutrition": {"calories": number_or_null, "protein": number_or_null, "carbs": number_or_null, "fat": number_or_null, "fiber": null}
+}"""
+        ).with_model("openai", "gpt-4.1-mini")
+
+        msg = UserMessage(text=f"Extrahiere das Rezept von dieser URL: {url}\n\nSeitentext:\n{clean}")
+        response = await chat.send_message(msg)
+
+        json_match = re.search(r'\{[\s\S]*\}', response)
+        if json_match:
+            data = json.loads(json_match.group())
+            data.setdefault('allergens', [])
+            data.setdefault('shared_with_group', False)
+            return data
+    except Exception as e:
+        logger.error(f"LLM recipe parse error: {e}")
+    return None
+
+@api_router.post("/recipes/import-preview")
+async def import_recipe_preview(data: ImportRequest, user: User = Depends(get_current_user)):
+    """
+    Fetch and parse a recipe from a URL.
+    Returns a preview for user review before saving.
+    """
+    url = data.url.strip()
+    if not url.startswith(('http://', 'https://')):
+        raise HTTPException(status_code=400, detail="Ungültige URL – muss mit http:// oder https:// beginnen")
+
+    fetch_headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+    }
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
+            resp = await client.get(url, headers=fetch_headers)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=408, detail="Zeitüberschreitung beim Laden der Seite (>20s)")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"URL konnte nicht geladen werden: {str(e)[:200]}")
+
+    if resp.status_code == 403:
+        raise HTTPException(
+            status_code=403,
+            detail="Diese Website blockiert den automatischen Zugriff (403). "
+                   "Tipp: Öffne die Seite im Browser, kopiere die Rezeptdaten und füge sie manuell ein."
+        )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Fehler beim Laden der Seite: HTTP {resp.status_code}"
+        )
+
+    html = resp.text
+
+    # 1. Try JSON-LD (most reliable, works for REWE, KitchenStories, etc.)
+    jsonld = extract_jsonld_recipe(html)
+    if jsonld:
+        recipe_data = build_recipe_from_jsonld(jsonld)
+        recipe_data['source_url'] = url
+        recipe_data['import_method'] = 'json-ld'
+        return {"success": True, "recipe": recipe_data, "method": "json-ld"}
+
+    # 2. LLM fallback
+    logger.info(f"No JSON-LD found for {url}, trying LLM parser")
+    llm_result = await parse_with_llm(html, url)
+    if llm_result:
+        llm_result['source_url'] = url
+        llm_result['import_method'] = 'llm'
+        return {"success": True, "recipe": llm_result, "method": "llm"}
+
+    raise HTTPException(
+        status_code=422,
+        detail="Kein Rezept auf dieser Seite gefunden. "
+               "Bitte stelle sicher, dass die URL direkt auf eine Rezeptseite zeigt "
+               "(z.B. https://www.rewe.de/rezepte/spaghetti-carbonara/)."
+    )
+
+
+@api_router.post("/recipes/import-save")
+async def import_recipe_save(recipe_data: RecipeCreate, user: User = Depends(get_current_user)):
+    """Save an imported (and optionally user-edited) recipe"""
+    recipe = Recipe(
+        user_id=user.user_id,
+        **recipe_data.model_dump()
+    )
+    recipe_doc = recipe.model_dump()
+    recipe_doc['created_at'] = recipe_doc['created_at'].isoformat()
+    recipe_doc['updated_at'] = recipe_doc['updated_at'].isoformat()
+    await db.recipes.insert_one(recipe_doc)
+    recipe_doc.pop('_id', None)
+    return recipe_doc
+
 
 @api_router.get("/recipes/{recipe_id}")
 async def get_recipe(recipe_id: str, user: User = Depends(get_current_user)):

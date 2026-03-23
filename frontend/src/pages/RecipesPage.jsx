@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
 import Layout from "../components/Layout";
@@ -14,34 +14,47 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { 
-  ChefHat, Plus, Search, Filter, Star, Clock, Users, X 
+  ChefHat, Plus, Search, Filter, Star, Clock, Users, X, Download
 } from "lucide-react";
+import RecipeImportDialog from "../components/RecipeImportDialog";
 
 const RecipesPage = () => {
+  const navigate = useNavigate();
   const [recipes, setRecipes] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("");
+  const [showImport, setShowImport] = useState(false);
+
+  const fetchData = async () => {
+    try {
+      const [recipesRes, categoriesRes] = await Promise.all([
+        axios.get(`${API}/recipes`, { withCredentials: true }),
+        axios.get(`${API}/categories`, { withCredentials: true })
+      ]);
+      setRecipes(recipesRes.data);
+      setCategories(categoriesRes.data);
+    } catch (error) {
+      console.error("Error fetching recipes:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [recipesRes, categoriesRes] = await Promise.all([
-          axios.get(`${API}/recipes`, { withCredentials: true }),
-          axios.get(`${API}/categories`, { withCredentials: true })
-        ]);
-        setRecipes(recipesRes.data);
-        setCategories(categoriesRes.data);
-      } catch (error) {
-        console.error("Error fetching recipes:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleImported = (action) => {
+    if (action === 'edit') {
+      navigate('/recipes/new?from_import=1');
+    } else {
+      fetchData();
+    }
+  };
 
   const filteredRecipes = recipes.filter(recipe => {
     const matchesSearch = !search || 
@@ -71,6 +84,7 @@ const RecipesPage = () => {
   }
 
   return (
+    <>
     <Layout>
       <div className="animate-fade-in" data-testid="recipes-page">
         {/* Header */}
@@ -83,12 +97,22 @@ const RecipesPage = () => {
               {recipes.length} Rezepte in deiner Sammlung
             </p>
           </div>
-          <Link to="/recipes/new">
-            <Button className="btn-primary" data-testid="add-recipe-button">
-              <Plus className="w-5 h-5" />
-              Neues Rezept
+          <div className="flex gap-2">
+            <Button
+              onClick={() => setShowImport(true)}
+              variant="outline"
+              className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Importieren
             </Button>
-          </Link>
+            <Link to="/recipes/new">
+              <Button className="btn-primary" data-testid="add-recipe-button">
+                <Plus className="w-5 h-5" />
+                Neues Rezept
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Filters */}
@@ -169,6 +193,13 @@ const RecipesPage = () => {
         )}
       </div>
     </Layout>
+
+    <RecipeImportDialog
+      open={showImport}
+      onClose={() => setShowImport(false)}
+      onImported={handleImported}
+    />
+    </>
   );
 };
 

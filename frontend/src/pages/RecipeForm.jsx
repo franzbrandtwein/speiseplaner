@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
 import Layout from "../components/Layout";
@@ -23,7 +23,9 @@ import { ArrowLeft, Plus, Trash2, Save, Image, Users } from "lucide-react";
 const RecipeForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isEditing = Boolean(id);
+  const fromImport = searchParams.get('from_import') === '1';
   
   const [loading, setLoading] = useState(isEditing);
   const [saving, setSaving] = useState(false);
@@ -82,6 +84,34 @@ const RecipeForm = () => {
             allergens: recipe.allergens || [],
             shared_with_group: recipe.shared_with_group || false
           });
+        } else if (fromImport) {
+          // Load imported recipe draft from sessionStorage
+          const draft = sessionStorage.getItem('import_recipe_draft');
+          if (draft) {
+            try {
+              const recipe = JSON.parse(draft);
+              setFormData({
+                name: recipe.name || "",
+                description: recipe.description || "",
+                category: recipe.category || "Hauptgericht",
+                difficulty: recipe.difficulty || "mittel",
+                portions: recipe.portions || 4,
+                prep_time: recipe.prep_time || "",
+                cook_time: recipe.cook_time || "",
+                image_url: recipe.image_url || "",
+                cost_per_portion: recipe.cost_per_portion || "",
+                ingredients: recipe.ingredients?.length ? recipe.ingredients : [{ name: "", amount: "", unit: "g" }],
+                instructions: recipe.instructions?.length ? recipe.instructions : [""],
+                nutrition: recipe.nutrition || { calories: "", protein: "", carbs: "", fat: "", fiber: "" },
+                allergens: recipe.allergens || [],
+                shared_with_group: recipe.shared_with_group || false
+              });
+              sessionStorage.removeItem('import_recipe_draft');
+              toast.success("Importiertes Rezept geladen – bitte prüfen und speichern.");
+            } catch (e) {
+              console.error("Failed to load import draft:", e);
+            }
+          }
         }
       } catch (error) {
         console.error("Error fetching data:", error);
