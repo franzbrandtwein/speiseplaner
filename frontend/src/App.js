@@ -16,6 +16,7 @@ import IngredientSearch from "./pages/IngredientSearch";
 import GroupPage from "./pages/GroupPage";
 import InvitePage from "./pages/InvitePage";
 import NotificationSettings from "./pages/NotificationSettings";
+import StapleItems from "./pages/StapleItems";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -214,6 +215,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <NotificationSettings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/staple-items"
+        element={
+          <ProtectedRoute>
+            <StapleItems />
           </ProtectedRoute>
         }
       />

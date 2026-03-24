@@ -9,7 +9,7 @@ import { Checkbox } from "../components/ui/checkbox";
 import { toast } from "sonner";
 import { 
   ShoppingCart, ChevronLeft, ChevronRight, Calendar, 
-  Check, Printer, Share2 
+  Check, Printer, Share2, Package 
 } from "lucide-react";
 import { format, startOfWeek, addDays, addWeeks, subWeeks } from "date-fns";
 import { de } from "date-fns/locale";
@@ -18,7 +18,7 @@ const ShoppingList = () => {
   const [currentWeekStart, setCurrentWeekStart] = useState(
     startOfWeek(new Date(), { weekStartsOn: 1 })
   );
-  const [shoppingList, setShoppingList] = useState({ items: [] });
+  const [shoppingList, setShoppingList] = useState({ items: [], staple_items: [] });
   const [loading, setLoading] = useState(true);
   const [checkedItems, setCheckedItems] = useState({});
 
@@ -49,34 +49,40 @@ const ShoppingList = () => {
   const goToNextWeek = () => setCurrentWeekStart(addWeeks(currentWeekStart, 1));
   const goToCurrentWeek = () => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
 
-  const toggleItem = (itemName) => {
-    setCheckedItems(prev => ({
-      ...prev,
-      [itemName]: !prev[itemName]
-    }));
+  const toggleItem = (key) => {
+    setCheckedItems(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const allItems = [
+    ...(shoppingList.items || []).map(i => ({ ...i, key: `recipe_${i.ingredient_name}` })),
+    ...(shoppingList.staple_items || []).map(i => ({ ...i, key: `staple_${i.item_id}` })),
+  ];
   const checkedCount = Object.values(checkedItems).filter(Boolean).length;
-  const totalCount = shoppingList.items?.length || 0;
+  const totalCount = allItems.length;
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => window.print();
 
   const handleShare = async () => {
-    const text = shoppingList.items
-      ?.map(item => `${item.checked ? "✓" : "☐"} ${item.ingredient_name}: ${item.total_amount} ${item.unit}`)
-      .join("\n");
+    const lines = [];
+    if (shoppingList.items?.length > 0) {
+      lines.push("--- Rezept-Zutaten ---");
+      shoppingList.items.forEach(item => {
+        lines.push(`${checkedItems[`recipe_${item.ingredient_name}`] ? "\u2713" : "\u2610"} ${item.ingredient_name}: ${item.total_amount} ${item.unit}`);
+      });
+    }
+    if (shoppingList.staple_items?.length > 0) {
+      lines.push("");
+      lines.push("--- Sonstige Artikel ---");
+      shoppingList.staple_items.forEach(item => {
+        lines.push(`${checkedItems[`staple_${item.item_id}`] ? "\u2713" : "\u2610"} ${item.ingredient_name}: ${item.total_amount} ${item.unit}`);
+      });
+    }
+    const text = lines.join("\n");
     
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: "Einkaufsliste",
-          text: text
-        });
-      } catch (error) {
-        console.log("Share cancelled");
-      }
+        await navigator.share({ title: "Einkaufsliste", text });
+      } catch {}
     } else {
       navigator.clipboard.writeText(text);
       toast.success("In Zwischenablage kopiert");
@@ -87,11 +93,15 @@ const ShoppingList = () => {
     return (
       <Layout>
         <div className="flex items-center justify-center h-64">
-          <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
         </div>
       </Layout>
     );
   }
+
+  const hasRecipeItems = shoppingList.items?.length > 0;
+  const hasStapleItems = shoppingList.staple_items?.length > 0;
+  const hasAnyItems = hasRecipeItems || hasStapleItems;
 
   return (
     <Layout>
@@ -103,7 +113,7 @@ const ShoppingList = () => {
               Einkaufsliste
             </h1>
             <p className="text-[var(--text-secondary)] mt-1">
-              Automatisch generiert aus deinem Speiseplan
+              Automatisch generiert aus Speiseplan & sonstigen Artikeln
             </p>
           </div>
           <div className="flex gap-2">
@@ -127,7 +137,6 @@ const ShoppingList = () => {
             <Button variant="ghost" onClick={goToPreviousWeek} data-testid="prev-week-button">
               <ChevronLeft className="w-5 h-5" />
             </Button>
-            
             <div className="text-center">
               <h2 className="font-heading text-lg font-semibold text-[var(--text-primary)]">
                 {format(currentWeekStart, "d. MMMM", { locale: de })} – {format(addDays(currentWeekStart, 6), "d. MMMM yyyy", { locale: de })}
@@ -140,7 +149,6 @@ const ShoppingList = () => {
                 Aktuelle Woche
               </Button>
             </div>
-            
             <Button variant="ghost" onClick={goToNextWeek} data-testid="next-week-button">
               <ChevronRight className="w-5 h-5" />
             </Button>
@@ -165,56 +173,129 @@ const ShoppingList = () => {
           </Card>
         )}
 
-        {/* Shopping List */}
-        <Card className="p-6 bg-white border-gray-100">
-          {shoppingList.items?.length === 0 ? (
-            <div className="text-center py-12">
-              <ShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="font-heading text-xl font-semibold text-[var(--text-primary)] mb-2">
-                Keine Zutaten
-              </h3>
-              <p className="text-[var(--text-muted)] mb-6">
-                Plane erst Mahlzeiten für diese Woche, um eine Einkaufsliste zu generieren.
-              </p>
+        {!hasAnyItems ? (
+          <Card className="p-12 bg-white border-gray-100 text-center">
+            <ShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="font-heading text-xl font-semibold text-[var(--text-primary)] mb-2">
+              Keine Einträge
+            </h3>
+            <p className="text-[var(--text-muted)] mb-6">
+              Plane Mahlzeiten oder lege sonstige Artikel an, um eine Einkaufsliste zu generieren.
+            </p>
+            <div className="flex gap-3 justify-center flex-wrap">
               <Link to="/meal-planner">
                 <Button className="btn-primary">
                   <Calendar className="w-4 h-4" /> Zum Speiseplan
                 </Button>
               </Link>
+              <Link to="/staple-items">
+                <Button variant="outline" className="btn-secondary">
+                  <Package className="w-4 h-4" /> Sonstige Artikel
+                </Button>
+              </Link>
             </div>
-          ) : (
-            <ul className="space-y-1">
-              {shoppingList.items.map((item, idx) => {
-                const isChecked = checkedItems[item.ingredient_name];
-                return (
-                  <li 
-                    key={idx}
-                    className={`flex items-center gap-4 p-3 rounded-xl transition-all cursor-pointer ${
-                      isChecked ? "bg-emerald-50" : "hover:bg-gray-50"
-                    }`}
-                    onClick={() => toggleItem(item.ingredient_name)}
-                    data-testid={`shopping-item-${idx}`}
-                  >
-                    <Checkbox
-                      checked={isChecked}
-                      onCheckedChange={() => toggleItem(item.ingredient_name)}
-                      className={isChecked ? "border-emerald-500 bg-emerald-500" : ""}
-                    />
-                    <span className={`flex-1 ${isChecked ? "line-through text-[var(--text-muted)]" : "text-[var(--text-primary)]"}`}>
-                      {item.ingredient_name}
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {/* Recipe Ingredients */}
+            {hasRecipeItems && (
+              <Card className="bg-white border-gray-100 overflow-hidden" data-testid="recipe-ingredients-section">
+                <div className="px-6 py-3 bg-gray-50 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <ShoppingCart className="w-4 h-4 text-emerald-600" />
+                    <h3 className="font-heading font-semibold text-sm text-[var(--text-primary)]">
+                      Rezept-Zutaten
+                    </h3>
+                    <span className="text-xs text-[var(--text-muted)]">
+                      ({shoppingList.items.length})
                     </span>
-                    <span className={`font-mono text-sm ${isChecked ? "text-[var(--text-muted)]" : "text-[var(--text-secondary)]"}`}>
-                      {item.total_amount} {item.unit}
+                  </div>
+                </div>
+                <ul className="divide-y divide-gray-50">
+                  {shoppingList.items.map((item, idx) => {
+                    const key = `recipe_${item.ingredient_name}`;
+                    const isChecked = checkedItems[key];
+                    return (
+                      <li 
+                        key={idx}
+                        className={`flex items-center gap-4 px-6 py-3 transition-all cursor-pointer ${
+                          isChecked ? "bg-emerald-50" : "hover:bg-gray-50"
+                        }`}
+                        onClick={() => toggleItem(key)}
+                        data-testid={`shopping-item-${idx}`}
+                      >
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={() => toggleItem(key)}
+                          className={isChecked ? "border-emerald-500 bg-emerald-500" : ""}
+                        />
+                        <span className={`flex-1 text-sm ${isChecked ? "line-through text-[var(--text-muted)]" : "text-[var(--text-primary)]"}`}>
+                          {item.ingredient_name}
+                        </span>
+                        <span className={`font-mono text-sm ${isChecked ? "text-[var(--text-muted)]" : "text-[var(--text-secondary)]"}`}>
+                          {item.total_amount} {item.unit}
+                        </span>
+                        {isChecked && <Check className="w-4 h-4 text-emerald-500" />}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+            )}
+
+            {/* Staple Items */}
+            {hasStapleItems && (
+              <Card className="bg-white border-gray-100 overflow-hidden" data-testid="staple-items-section">
+                <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4 text-purple-600" />
+                    <h3 className="font-heading font-semibold text-sm text-[var(--text-primary)]">
+                      Sonstige Artikel
+                    </h3>
+                    <span className="text-xs text-[var(--text-muted)]">
+                      ({shoppingList.staple_items.length})
                     </span>
-                    {isChecked && (
-                      <Check className="w-5 h-5 text-emerald-500" />
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
+                  </div>
+                  <Link to="/staple-items" className="text-xs text-emerald-600 hover:underline">
+                    Verwalten
+                  </Link>
+                </div>
+                <ul className="divide-y divide-gray-50">
+                  {shoppingList.staple_items.map((item) => {
+                    const key = `staple_${item.item_id}`;
+                    const isChecked = checkedItems[key];
+                    return (
+                      <li 
+                        key={item.item_id}
+                        className={`flex items-center gap-4 px-6 py-3 transition-all cursor-pointer ${
+                          isChecked ? "bg-emerald-50" : "hover:bg-gray-50"
+                        }`}
+                        onClick={() => toggleItem(key)}
+                        data-testid={`staple-shopping-item-${item.item_id}`}
+                      >
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={() => toggleItem(key)}
+                          className={isChecked ? "border-emerald-500 bg-emerald-500" : ""}
+                        />
+                        <span className={`flex-1 text-sm ${isChecked ? "line-through text-[var(--text-muted)]" : "text-[var(--text-primary)]"}`}>
+                          {item.ingredient_name}
+                        </span>
+                        <span className="text-xs text-[var(--text-muted)] px-2 py-0.5 bg-gray-100 rounded-full">
+                          {item.category}
+                        </span>
+                        <span className={`font-mono text-sm ${isChecked ? "text-[var(--text-muted)]" : "text-[var(--text-secondary)]"}`}>
+                          {item.total_amount} {item.unit}
+                        </span>
+                        {isChecked && <Check className="w-4 h-4 text-emerald-500" />}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+            )}
+          </div>
+        )}
       </div>
     </Layout>
   );

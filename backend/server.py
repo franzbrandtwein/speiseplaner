@@ -1299,7 +1299,23 @@ async def get_shopping_list(week_start: str, user: User = Depends(get_current_us
         )
 
     if not plan:
-        return {"items": [], "week_start": week_start}
+        # Still include staple items even without a meal plan
+        user_doc_fresh = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+        group_id_fresh = user_doc_fresh.get("group_id") if user_doc_fresh else group_id
+        staple_query = {"group_id": group_id_fresh, "active": True} if group_id_fresh else {"user_id": user.user_id, "group_id": None, "active": True}
+        staple_items = await db.staple_items.find(staple_query, {"_id": 0}).to_list(500)
+        staple_list = []
+        for si in staple_items:
+            staple_list.append({
+                "item_id": si["item_id"],
+                "ingredient_name": si["name"],
+                "total_amount": str(si["amount"]),
+                "unit": si["unit"],
+                "category": si.get("category", "Sonstiges"),
+                "checked": False,
+                "is_staple": True
+            })
+        return {"items": [], "staple_items": staple_list, "week_start": week_start}
     
     recipe_ids = set()
     recipe_portions = {}
@@ -1358,7 +1374,24 @@ async def get_shopping_list(week_start: str, user: User = Depends(get_current_us
             item["total_amount"] = str(round(item["total_amount"], 2))
         items.append(item)
     
-    return {"items": items, "week_start": week_start}
+    # Add active staple items
+    user_doc_fresh = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id_fresh = user_doc_fresh.get("group_id") if user_doc_fresh else group_id
+    staple_query = {"group_id": group_id_fresh, "active": True} if group_id_fresh else {"user_id": user.user_id, "group_id": None, "active": True}
+    staple_items = await db.staple_items.find(staple_query, {"_id": 0}).to_list(500)
+    staple_list = []
+    for si in staple_items:
+        staple_list.append({
+            "item_id": si["item_id"],
+            "ingredient_name": si["name"],
+            "total_amount": str(si["amount"]),
+            "unit": si["unit"],
+            "category": si.get("category", "Sonstiges"),
+            "checked": False,
+            "is_staple": True
+        })
+
+    return {"items": items, "staple_items": staple_list, "week_start": week_start}
 
 @api_router.post("/shopping-list/toggle")
 async def toggle_shopping_item(request: Request, user: User = Depends(get_current_user)):
@@ -1367,6 +1400,65 @@ async def toggle_shopping_item(request: Request, user: User = Depends(get_curren
     return {"message": "Item toggled"}
 
 # ============ CATEGORIES ============
+
+STAPLE_CATEGORIES = ["Getränke", "Gewürze", "Haushalt", "Hygiene", "Backzutaten", "Sonstiges"]
+
+class StapleItemCreate(BaseModel):
+    name: str
+    amount: float
+    unit: str
+    category: str = "Sonstiges"
+    active: bool = True
+
+class StapleItemUpdate(BaseModel):
+    name: Optional[str] = None
+    amount: Optional[float] = None
+    unit: Optional[str] = None
+    category: Optional[str] = None
+    active: Optional[bool] = None
+
+# ── Staple Items CRUD ──
+
+@api_router.get("/staple-items")
+async def get_staple_items(user: User = Depends(get_current_user)):
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+    query = {"group_id": group_id} if group_id else {"user_id": user.user_id, "group_id": None}
+    items = await db.staple_items.find(query, {"_id": 0}).to_list(500)
+    return {"items": items, "categories": STAPLE_CATEGORIES}
+
+@api_router.post("/staple-items")
+async def create_staple_item(data: StapleItemCreate, user: User = Depends(get_current_user)):
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+    item_id = f"staple_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "item_id": item_id, "user_id": user.user_id, "group_id": group_id,
+        "name": data.name, "amount": data.amount, "unit": data.unit,
+        "category": data.category, "active": data.active,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.staple_items.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.put("/staple-items/{item_id}")
+async def update_staple_item(item_id: str, data: StapleItemUpdate, user: User = Depends(get_current_user)):
+    existing = await db.staple_items.find_one({"item_id": item_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Artikel nicht gefunden")
+    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    if updates:
+        await db.staple_items.update_one({"item_id": item_id}, {"$set": updates})
+    updated = await db.staple_items.find_one({"item_id": item_id}, {"_id": 0})
+    return updated
+
+@api_router.delete("/staple-items/{item_id}")
+async def delete_staple_item(item_id: str, user: User = Depends(get_current_user)):
+    result = await db.staple_items.delete_one({"item_id": item_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Artikel nicht gefunden")
+    return {"message": "Artikel gelöscht"}
 
 @api_router.get("/categories")
 async def get_categories(user: User = Depends(get_current_user)):
