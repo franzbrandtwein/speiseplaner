@@ -64,6 +64,15 @@
 - [x] Chefkoch-Import: Zubereitungstext korrekt erfasst
 - [x] PWA Install-Button immer sichtbar
 
+## Features (Mar 2026)
+- [x] Push-Benachrichtigungen für den Speiseplan (VERIFIZIERT - 14/14 Backend Tests, Frontend 100%)
+  - Tägliche Mahlzeit-Erinnerung (konfigurierbare Uhrzeit, Standard 08:00)
+  - Einkaufslisten-Erinnerung (konfigurierbarer Tag + Uhrzeit, Standard Sonntag 10:00)
+  - Leerer Speiseplan-Erinnerung (konfigurierbare Uhrzeit, Standard 18:00)
+  - Sofort-Benachrichtigung bei neuem Gericht im Speiseplan
+  - Einstellungs-Seite unter /notifications
+  - Service Worker Push-Handler + Click-Navigation
+
 ## Prioritized Backlog
 
 ### P1 (Next)
@@ -74,7 +83,6 @@
 
 ### P2 (Future)
 - [ ] Background Sync für Offline-Aktionen
-- [ ] Push-Benachrichtigungen für den Speiseplan
 - [ ] Meal plan templates
 - [ ] Nutritional goals tracking
 - [ ] Print-friendly recipe view
@@ -94,16 +102,24 @@
 - POST /api/recipes/:id/ratings
 - POST /api/recipes/import-preview, /api/recipes/import-save
 - POST /api/recipes/search-by-ingredients
-- GET/POST /api/mealplans (inkl. side_dishes)
+- GET/POST /api/mealplans (inkl. side_dishes + instant push notification)
 - GET /api/shopping-list (inkl. Beilagen-Zutaten)
 - GET /api/categories
 - POST /api/groups, GET /api/groups/my, POST /api/groups/invite, POST /api/groups/leave
 - GET/POST /api/invitations/:token, POST /api/invitations/:token/accept
+- GET /api/notifications/vapid-public-key
+- POST /api/notifications/subscribe, DELETE /api/notifications/unsubscribe
+- GET/PUT /api/notifications/preferences
+- GET /api/notifications/status
+- POST /api/notifications/test
 
 ## Key Data Models
 - **recipes**: { recipe_id, name, ingredients[], instructions[], portions, side_dishes: [recipe_id] }
 - **meal_plans**: { plan_id, week_start, days: [{ date, breakfast/lunch/dinner: MealSlot }] }
 - **MealSlot**: { recipe_id, recipe_name, portions, side_dishes: [{ recipe_id, recipe_name, portions }] }
+- **push_subscriptions**: { subscription_id, user_id, endpoint, keys: {p256dh, auth} }
+- **notification_prefs**: { user_id, meal_reminder, meal_reminder_time, shopping_reminder, shopping_reminder_day, shopping_reminder_time, empty_plan_reminder, empty_plan_reminder_time, new_meal_notification }
+- **notification_log**: { key, sent_at } (zur Vermeidung von Duplikaten)
 
 ## Test Credentials
 - test_debug@test.de / password123
