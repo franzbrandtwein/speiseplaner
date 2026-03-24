@@ -78,6 +78,13 @@
   - Beilagen werden korrekt mit verschoben
   - Visueller Feedback (grüner Rahmen beim Drag-Over)
   - Griff-Icon an gefüllten Slots
+- [x] Sonstige Artikel / Wochenbedarf (VERIFIZIERT - 11/11 Backend, Frontend 100%)
+  - CRUD für Artikel (Name, Menge, Einheit, Kategorie)
+  - Kategorien: Getränke, Gewürze, Haushalt, Hygiene, Backzutaten, Sonstiges
+  - Aktivieren/Deaktivieren per Toggle
+  - Aktive Artikel automatisch in der Einkaufsliste
+  - Eigene Verwaltungs-Seite /staple-items
+  - Einkaufsliste zeigt Rezept-Zutaten und Sonstige Artikel getrennt
 
 ## Prioritized Backlog
 
@@ -125,6 +132,7 @@
 - **push_subscriptions**: { subscription_id, user_id, endpoint, keys: {p256dh, auth} }
 - **notification_prefs**: { user_id, meal_reminder, meal_reminder_time, shopping_reminder, shopping_reminder_day, shopping_reminder_time, empty_plan_reminder, empty_plan_reminder_time, new_meal_notification }
 - **notification_log**: { key, sent_at } (zur Vermeidung von Duplikaten)
+- **staple_items**: { item_id, user_id, group_id, name, amount, unit, category, active, created_at }
 
 ## Test Credentials
 - test_debug@test.de / password123
