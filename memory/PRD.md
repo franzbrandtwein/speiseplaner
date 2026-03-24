@@ -72,6 +72,12 @@
   - Sofort-Benachrichtigung bei neuem Gericht im Speiseplan
   - Einstellungs-Seite unter /notifications
   - Service Worker Push-Handler + Click-Navigation
+- [x] Drag & Drop im Speiseplan (VERIFIZIERT - Frontend + Backend 100%)
+  - Gerichte per Maus zwischen Slots verschieben
+  - Tauschen zwischen gefüllten Slots
+  - Beilagen werden korrekt mit verschoben
+  - Visueller Feedback (grüner Rahmen beim Drag-Over)
+  - Griff-Icon an gefüllten Slots
 
 ## Prioritized Backlog
 
@@ -79,7 +85,6 @@
 - [ ] Import von weiteren Rezept-Websites testen
 - [ ] Alternative Import-Methode für blockierende Seiten (z.B. REWE) über Clipboard
 - [ ] Recipe image upload (currently URL only)
-- [ ] Drag & Drop for meal planner
 
 ### P2 (Future)
 - [ ] Background Sync für Offline-Aktionen
