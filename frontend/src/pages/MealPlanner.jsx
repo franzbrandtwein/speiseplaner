@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import {
   ChevronLeft, ChevronRight, Plus, X, Save, ShoppingCart,
   Coffee, UtensilsCrossed, Moon, ChefHat, ArrowLeft,
-  Search, Minus
+  Search, Minus, GripVertical
 } from "lucide-react";
 import { format, startOfWeek, addDays, addWeeks, subWeeks } from "date-fns";
 import { de } from "date-fns/locale";
@@ -349,16 +349,23 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes }) =>
 };
 
 // ─── Slot Cell ────────────────────────────────────────────────────────────────
-const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortions, onRemoveSide, dateStr, mealKey }) => {
+const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortions, onRemoveSide, dateStr, mealKey, onDragStart, onDragOver, onDrop, onDragLeave, isDragOver }) => {
   if (!meal) {
     return (
       <Card
-        className="p-3 min-h-[100px] flex flex-col transition-all cursor-pointer hover:border-emerald-200 bg-[var(--bg-subtle)] border-dashed border-gray-200"
+        className={`p-3 min-h-[100px] flex flex-col transition-all cursor-pointer border-dashed bg-[var(--bg-subtle)] ${
+          isDragOver
+            ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200"
+            : "hover:border-emerald-200 border-gray-200"
+        }`}
         onClick={onOpen}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onDragLeave={onDragLeave}
         data-testid={`meal-slot-${dateStr}-${mealKey}`}
       >
         <div className="flex-1 flex items-center justify-center">
-          <Plus className="w-5 h-5 text-[var(--text-muted)]" />
+          <Plus className={`w-5 h-5 ${isDragOver ? "text-emerald-500" : "text-[var(--text-muted)]"}`} />
         </div>
       </Card>
     );
@@ -366,17 +373,29 @@ const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortion
 
   return (
     <Card
-      className="p-3 min-h-[100px] flex flex-col bg-white border-gray-100 transition-all"
+      className={`p-3 min-h-[100px] flex flex-col bg-white transition-all ${
+        isDragOver
+          ? "border-emerald-400 ring-2 ring-emerald-200"
+          : "border-gray-100"
+      }`}
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragLeave={onDragLeave}
       data-testid={`meal-slot-${dateStr}-${mealKey}`}
     >
       {/* Main recipe */}
       <div className="flex justify-between items-start gap-1 mb-2">
-        <button
-          className="font-medium text-xs text-[var(--text-primary)] line-clamp-2 flex-1 text-left hover:text-emerald-700 transition-colors"
-          onClick={onOpen}
-        >
-          {meal.recipe_name}
-        </button>
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          <GripVertical className="w-3 h-3 text-gray-300 flex-shrink-0 cursor-grab active:cursor-grabbing" />
+          <button
+            className="font-medium text-xs text-[var(--text-primary)] line-clamp-2 flex-1 text-left hover:text-emerald-700 transition-colors"
+            onClick={onOpen}
+          >
+            {meal.recipe_name}
+          </button>
+        </div>
         <button
           onClick={onClear}
           className="p-0.5 hover:bg-red-50 rounded text-red-400 hover:text-red-600 flex-shrink-0"
@@ -438,6 +457,8 @@ const MealPlanner = () => {
   const [saving, setSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [dragSource, setDragSource] = useState(null);
+  const [dragOverTarget, setDragOverTarget] = useState(null);
 
   const weekStartStr = format(currentWeekStart, "yyyy-MM-dd");
 
@@ -525,6 +546,66 @@ const MealPlanner = () => {
     );
   };
 
+  // ── Drag & Drop ──
+  const handleDragStart = (e, dateStr, mealType) => {
+    setDragSource({ dateStr, mealType });
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", `${dateStr}|${mealType}`);
+    // Semi-transparent drag image
+    if (e.target) e.target.style.opacity = "0.5";
+  };
+
+  const handleDragEnd = (e) => {
+    if (e.target) e.target.style.opacity = "1";
+    setDragSource(null);
+    setDragOverTarget(null);
+  };
+
+  const handleDragOver = (e, dateStr, mealType) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const key = `${dateStr}-${mealType}`;
+    if (dragOverTarget !== key) setDragOverTarget(key);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverTarget(null);
+  };
+
+  const handleDrop = (e, targetDateStr, targetMealType) => {
+    e.preventDefault();
+    setDragOverTarget(null);
+    if (!dragSource || !mealPlan) return;
+    const { dateStr: srcDate, mealType: srcMeal } = dragSource;
+    setDragSource(null);
+
+    // Don't drop on self
+    if (srcDate === targetDateStr && srcMeal === targetMealType) return;
+
+    const srcSlot = getMealForSlot(srcDate, srcMeal);
+    const targetSlot = getMealForSlot(targetDateStr, targetMealType);
+
+    // Swap or move
+    setMealPlan(prev => ({
+      ...prev,
+      days: prev.days.map(day => {
+        if (day.date === srcDate && srcDate === targetDateStr) {
+          // Same day - swap two meal types
+          return { ...day, [srcMeal]: targetSlot, [targetMealType]: srcSlot };
+        }
+        if (day.date === srcDate) {
+          return { ...day, [srcMeal]: targetSlot };
+        }
+        if (day.date === targetDateStr) {
+          return { ...day, [targetMealType]: srcSlot };
+        }
+        return day;
+      })
+    }));
+
+    toast.success(targetSlot ? "Gerichte getauscht" : "Gericht verschoben");
+  };
+
   const saveMealPlan = async () => {
     if (!mealPlan) return;
     setSaving(true);
@@ -609,7 +690,7 @@ const MealPlanner = () => {
         </Card>
 
         {/* Calendar Grid */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" onDragEnd={handleDragEnd}>
           <div className="min-w-[820px]">
             {/* Days Header */}
             <div className="grid grid-cols-8 gap-2 mb-2">
@@ -658,6 +739,11 @@ const MealPlanner = () => {
                       onUpdatePortions={val => updateMainPortions(dateStr, key, val)}
                       onUpdateSidePortions={(rid, val) => updateSidePortions(dateStr, key, rid, val)}
                       onRemoveSide={rid => removeSideDish(dateStr, key, rid)}
+                      isDragOver={dragOverTarget === `${dateStr}-${key}`}
+                      onDragStart={e => handleDragStart(e, dateStr, key)}
+                      onDragOver={e => handleDragOver(e, dateStr, key)}
+                      onDrop={e => handleDrop(e, dateStr, key)}
+                      onDragLeave={handleDragLeave}
                     />
                   );
                 })}
