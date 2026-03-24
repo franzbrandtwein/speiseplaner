@@ -73,11 +73,12 @@
   - Einstellungs-Seite unter /notifications
   - Service Worker Push-Handler + Click-Navigation
 - [x] Drag & Drop im Speiseplan (VERIFIZIERT - Frontend + Backend 100%)
-  - Gerichte per Maus zwischen Slots verschieben
+  - Desktop: HTML5 Drag & Drop per Maus
+  - Mobile: Tap-to-Move (Griff-Icon antippen → Ziel antippen)
+  - Move-Banner mit Abbrechen-Button
+  - Leere Slots zeigen "Hierher" als Zielindikator
   - Tauschen zwischen gefüllten Slots
   - Beilagen werden korrekt mit verschoben
-  - Visueller Feedback (grüner Rahmen beim Drag-Over)
-  - Griff-Icon an gefüllten Slots
 - [x] Sonstige Artikel / Wochenbedarf (VERIFIZIERT - 11/11 Backend, Frontend 100%)
   - CRUD für Artikel (Name, Menge, Einheit, Kategorie)
   - Kategorien: Getränke, Gewürze, Haushalt, Hygiene, Backzutaten, Sonstiges

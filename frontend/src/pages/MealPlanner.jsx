@@ -349,12 +349,12 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes }) =>
 };
 
 // ─── Slot Cell ────────────────────────────────────────────────────────────────
-const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortions, onRemoveSide, dateStr, mealKey, onDragStart, onDragOver, onDrop, onDragLeave, isDragOver }) => {
+const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortions, onRemoveSide, dateStr, mealKey, onDragStart, onDragOver, onDrop, onDragLeave, isDragOver, isMoveSource, isMoving, onMoveStart }) => {
   if (!meal) {
     return (
       <Card
         className={`p-3 min-h-[100px] flex flex-col transition-all cursor-pointer border-dashed bg-[var(--bg-subtle)] ${
-          isDragOver
+          isDragOver || (isMoving && !isMoveSource)
             ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200"
             : "hover:border-emerald-200 border-gray-200"
         }`}
@@ -365,7 +365,11 @@ const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortion
         data-testid={`meal-slot-${dateStr}-${mealKey}`}
       >
         <div className="flex-1 flex items-center justify-center">
-          <Plus className={`w-5 h-5 ${isDragOver ? "text-emerald-500" : "text-[var(--text-muted)]"}`} />
+          {isMoving && !isMoveSource ? (
+            <span className="text-xs text-emerald-500 font-medium">Hierher</span>
+          ) : (
+            <Plus className={`w-5 h-5 ${isDragOver ? "text-emerald-500" : "text-[var(--text-muted)]"}`} />
+          )}
         </div>
       </Card>
     );
@@ -373,10 +377,12 @@ const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortion
 
   return (
     <Card
-      className={`p-3 min-h-[100px] flex flex-col bg-white transition-all ${
-        isDragOver
-          ? "border-emerald-400 ring-2 ring-emerald-200"
-          : "border-gray-100"
+      className={`p-3 min-h-[100px] flex flex-col transition-all ${
+        isMoveSource
+          ? "border-emerald-500 ring-2 ring-emerald-300 bg-emerald-50"
+          : isDragOver || (isMoving && !isMoveSource)
+            ? "border-emerald-400 ring-2 ring-emerald-200"
+            : "bg-white border-gray-100"
       }`}
       draggable
       onDragStart={onDragStart}
@@ -388,7 +394,18 @@ const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortion
       {/* Main recipe */}
       <div className="flex justify-between items-start gap-1 mb-2">
         <div className="flex items-center gap-1 flex-1 min-w-0">
-          <GripVertical className="w-3 h-3 text-gray-300 flex-shrink-0 cursor-grab active:cursor-grabbing" />
+          <button
+            onClick={(e) => { e.stopPropagation(); onMoveStart(); }}
+            className={`p-0.5 rounded flex-shrink-0 transition-colors ${
+              isMoveSource
+                ? "bg-emerald-200 text-emerald-700"
+                : "text-gray-300 hover:text-gray-500 hover:bg-gray-100 cursor-grab active:cursor-grabbing"
+            }`}
+            data-testid={`move-grip-${dateStr}-${mealKey}`}
+            title={isMoveSource ? "Abbrechen" : "Verschieben"}
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </button>
           <button
             className="font-medium text-xs text-[var(--text-primary)] line-clamp-2 flex-1 text-left hover:text-emerald-700 transition-colors"
             onClick={onOpen}
@@ -459,6 +476,7 @@ const MealPlanner = () => {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [dragSource, setDragSource] = useState(null);
   const [dragOverTarget, setDragOverTarget] = useState(null);
+  const [moveSource, setMoveSource] = useState(null); // Mobile tap-to-move
 
   const weekStartStr = format(currentWeekStart, "yyyy-MM-dd");
 
@@ -546,12 +564,35 @@ const MealPlanner = () => {
     );
   };
 
-  // ── Drag & Drop ──
+  // ── Shared move/swap logic ──
+  const performMoveOrSwap = (srcDate, srcMeal, targetDate, targetMeal) => {
+    if (srcDate === targetDate && srcMeal === targetMeal) return;
+    const srcSlot = getMealForSlot(srcDate, srcMeal);
+    const targetSlot = getMealForSlot(targetDate, targetMeal);
+    setMealPlan(prev => ({
+      ...prev,
+      days: prev.days.map(day => {
+        if (day.date === srcDate && srcDate === targetDate) {
+          return { ...day, [srcMeal]: targetSlot, [targetMeal]: srcSlot };
+        }
+        if (day.date === srcDate) {
+          return { ...day, [srcMeal]: targetSlot };
+        }
+        if (day.date === targetDate) {
+          return { ...day, [targetMeal]: srcSlot };
+        }
+        return day;
+      })
+    }));
+    toast.success(targetSlot ? "Gerichte getauscht" : "Gericht verschoben");
+  };
+
+  // ── Desktop Drag & Drop ──
   const handleDragStart = (e, dateStr, mealType) => {
     setDragSource({ dateStr, mealType });
+    setMoveSource(null); // cancel any mobile move
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", `${dateStr}|${mealType}`);
-    // Semi-transparent drag image
     if (e.target) e.target.style.opacity = "0.5";
   };
 
@@ -578,32 +619,29 @@ const MealPlanner = () => {
     if (!dragSource || !mealPlan) return;
     const { dateStr: srcDate, mealType: srcMeal } = dragSource;
     setDragSource(null);
+    performMoveOrSwap(srcDate, srcMeal, targetDateStr, targetMealType);
+  };
 
-    // Don't drop on self
-    if (srcDate === targetDateStr && srcMeal === targetMealType) return;
+  // ── Mobile Tap-to-Move ──
+  const handleMoveStart = (dateStr, mealType) => {
+    if (moveSource && moveSource.dateStr === dateStr && moveSource.mealType === mealType) {
+      setMoveSource(null); // tap same slot = cancel
+    } else {
+      setMoveSource({ dateStr, mealType });
+    }
+  };
 
-    const srcSlot = getMealForSlot(srcDate, srcMeal);
-    const targetSlot = getMealForSlot(targetDateStr, targetMealType);
-
-    // Swap or move
-    setMealPlan(prev => ({
-      ...prev,
-      days: prev.days.map(day => {
-        if (day.date === srcDate && srcDate === targetDateStr) {
-          // Same day - swap two meal types
-          return { ...day, [srcMeal]: targetSlot, [targetMealType]: srcSlot };
-        }
-        if (day.date === srcDate) {
-          return { ...day, [srcMeal]: targetSlot };
-        }
-        if (day.date === targetDateStr) {
-          return { ...day, [targetMealType]: srcSlot };
-        }
-        return day;
-      })
-    }));
-
-    toast.success(targetSlot ? "Gerichte getauscht" : "Gericht verschoben");
+  const handleSlotClick = (dateStr, mealType) => {
+    if (moveSource) {
+      if (moveSource.dateStr === dateStr && moveSource.mealType === mealType) {
+        setMoveSource(null); // cancel
+      } else {
+        performMoveOrSwap(moveSource.dateStr, moveSource.mealType, dateStr, mealType);
+        setMoveSource(null);
+      }
+    } else {
+      openSlotDialog(dateStr, mealType);
+    }
   };
 
   const saveMealPlan = async () => {
@@ -689,6 +727,27 @@ const MealPlanner = () => {
           </div>
         </Card>
 
+        {/* Move Mode Banner */}
+        {moveSource && (
+          <Card className="p-3 mb-4 bg-emerald-50 border-emerald-200 flex items-center justify-between animate-fade-in" data-testid="move-mode-banner">
+            <div className="flex items-center gap-2">
+              <GripVertical className="w-4 h-4 text-emerald-600" />
+              <span className="text-sm font-medium text-emerald-700">
+                {getMealForSlot(moveSource.dateStr, moveSource.mealType)?.recipe_name} verschieben — Ziel-Slot antippen
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMoveSource(null)}
+              className="text-emerald-600 hover:bg-emerald-100 h-7"
+              data-testid="cancel-move-btn"
+            >
+              <X className="w-4 h-4" /> Abbrechen
+            </Button>
+          </Card>
+        )}
+
         {/* Calendar Grid */}
         <div className="overflow-x-auto" onDragEnd={handleDragEnd}>
           <div className="min-w-[820px]">
@@ -728,18 +787,22 @@ const MealPlanner = () => {
                 </div>
                 {days.map(({ dateStr }) => {
                   const meal = getMealForSlot(dateStr, key);
+                  const isMoveSource = moveSource?.dateStr === dateStr && moveSource?.mealType === key;
                   return (
                     <SlotCell
                       key={`${dateStr}-${key}`}
                       meal={meal}
                       dateStr={dateStr}
                       mealKey={key}
-                      onOpen={() => openSlotDialog(dateStr, key)}
+                      onOpen={() => handleSlotClick(dateStr, key)}
                       onClear={() => clearSlot(dateStr, key)}
                       onUpdatePortions={val => updateMainPortions(dateStr, key, val)}
                       onUpdateSidePortions={(rid, val) => updateSidePortions(dateStr, key, rid, val)}
                       onRemoveSide={rid => removeSideDish(dateStr, key, rid)}
                       isDragOver={dragOverTarget === `${dateStr}-${key}`}
+                      isMoveSource={isMoveSource}
+                      isMoving={!!moveSource}
+                      onMoveStart={() => handleMoveStart(dateStr, key)}
                       onDragStart={e => handleDragStart(e, dateStr, key)}
                       onDragOver={e => handleDragOver(e, dateStr, key)}
                       onDrop={e => handleDrop(e, dateStr, key)}
