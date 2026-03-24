@@ -135,19 +135,66 @@ pip install --upgrade pip --quiet
 
 # Lokale requirements verwenden (ohne Emergent-spezifische Pakete)
 if [ -f "requirements.local.txt" ]; then
+    info "Installiere Backend-Abhängigkeiten aus requirements.local.txt..."
     pip install -r requirements.local.txt --quiet
 else
+    info "Installiere Backend-Abhängigkeiten aus requirements.txt..."
     pip install -r requirements.txt --quiet 2>/dev/null || \
-    pip install fastapi uvicorn python-dotenv pymongo pydantic motor httpx python-multipart --quiet
+    pip install fastapi uvicorn python-dotenv pymongo pydantic motor httpx python-multipart pywebpush py-vapid --quiet
+fi
+
+# VAPID Keys generieren falls nicht vorhanden
+VAPID_KEYS_NEEDED=false
+if [ -f ".env" ]; then
+    if ! grep -q "VAPID_PRIVATE_KEY" .env; then
+        VAPID_KEYS_NEEDED=true
+    fi
+else
+    VAPID_KEYS_NEEDED=true
+fi
+
+if [ "$VAPID_KEYS_NEEDED" = true ]; then
+    info "Generiere VAPID-Keys für Push-Benachrichtigungen..."
+    VAPID_OUTPUT=$(python3 -c "
+from py_vapid import Vapid
+import base64
+v = Vapid()
+v.generate_keys()
+raw_priv = v.private_key.private_numbers().private_value.to_bytes(32, 'big')
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+raw_pub = v.public_key.public_bytes(encoding=Encoding.X962, format=PublicFormat.UncompressedPoint)
+priv_b64 = base64.urlsafe_b64encode(raw_priv).decode().rstrip('=')
+pub_b64 = base64.urlsafe_b64encode(raw_pub).decode().rstrip('=')
+print(f'{priv_b64}|{pub_b64}')
+" 2>/dev/null) || true
+
+    if [ -n "$VAPID_OUTPUT" ]; then
+        VAPID_PRIVATE=$(echo "$VAPID_OUTPUT" | cut -d'|' -f1)
+        VAPID_PUBLIC=$(echo "$VAPID_OUTPUT" | cut -d'|' -f2)
+        info "VAPID-Keys erfolgreich generiert"
+    else
+        warn "VAPID-Keys konnten nicht generiert werden - Push-Benachrichtigungen deaktiviert"
+        VAPID_PRIVATE=""
+        VAPID_PUBLIC=""
+    fi
 fi
 
 # .env Datei erstellen falls nicht vorhanden
 if [ ! -f ".env" ]; then
     info "Erstelle Backend .env Datei..."
     cat > .env << EOF
-MONGO_URL="mongodb://localhost:27017"
-DB_NAME="kochplaner"
+MONGO_URL=mongodb://localhost:27017
+DB_NAME=kochplaner
+VAPID_PRIVATE_KEY=${VAPID_PRIVATE}
+VAPID_PUBLIC_KEY=${VAPID_PUBLIC}
+VAPID_CLAIMS_EMAIL=mailto:admin@kochplaner.app
 EOF
+elif [ "$VAPID_KEYS_NEEDED" = true ] && [ -n "$VAPID_PRIVATE" ]; then
+    info "Füge VAPID-Keys zur bestehenden .env hinzu..."
+    echo "" >> .env
+    echo "VAPID_PRIVATE_KEY=${VAPID_PRIVATE}" >> .env
+    echo "VAPID_PUBLIC_KEY=${VAPID_PUBLIC}" >> .env
+    echo "VAPID_CLAIMS_EMAIL=mailto:admin@kochplaner.app" >> .env
 fi
 
 deactivate
