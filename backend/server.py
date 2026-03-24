@@ -1142,11 +1142,9 @@ async def add_rating(recipe_id: str, rating_data: RatingCreate, user: User = Dep
 @api_router.get("/mealplans")
 async def get_meal_plan(week_start: str, user: User = Depends(get_current_user)):
     """Get meal plan for a specific week - persönlich oder Gruppen-Plan"""
-    # Prüfen ob User in einer Gruppe ist
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     group_id = user_doc.get("group_id")
-    
-    # Suche nach Gruppenplan oder persönlichem Plan
+
     if group_id:
         plan = await db.meal_plans.find_one({
             "group_id": group_id,
@@ -1158,7 +1156,7 @@ async def get_meal_plan(week_start: str, user: User = Depends(get_current_user))
             "group_id": None,
             "week_start": week_start
         }, {"_id": 0})
-    
+
     if not plan:
         days = []
         start_date = datetime.fromisoformat(week_start)
@@ -1178,7 +1176,14 @@ async def get_meal_plan(week_start: str, user: User = Depends(get_current_user))
             "days": days,
             "is_group_plan": group_id is not None
         }
-    
+
+    # Normalize: ensure every meal slot has side_dishes field (backwards compat)
+    for day in plan.get("days", []):
+        for mt in ["breakfast", "lunch", "dinner"]:
+            meal = day.get(mt)
+            if meal and isinstance(meal, dict) and "side_dishes" not in meal:
+                meal["side_dishes"] = []
+
     plan["is_group_plan"] = plan.get("group_id") is not None
     return plan
 
@@ -1228,17 +1233,25 @@ async def save_meal_plan(plan_data: MealPlanUpdate, user: User = Depends(get_cur
 
 @api_router.get("/shopping-list")
 async def get_shopping_list(week_start: str, user: User = Depends(get_current_user)):
-    """Generate shopping list from meal plan"""
-    plan = await db.meal_plans.find_one({
-        "user_id": user.user_id,
-        "week_start": week_start
-    }, {"_id": 0})
-    
+    """Generate shopping list from meal plan (personal or group)"""
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+
+    if group_id:
+        plan = await db.meal_plans.find_one(
+            {"group_id": group_id, "week_start": week_start}, {"_id": 0}
+        )
+    else:
+        plan = await db.meal_plans.find_one(
+            {"user_id": user.user_id, "week_start": week_start}, {"_id": 0}
+        )
+
     if not plan:
         return {"items": [], "week_start": week_start}
     
     recipe_ids = set()
     recipe_portions = {}
+    recipe_sources = {}  # recipe_id -> list of (day, meal_type, role)
 
     for day in plan.get("days", []):
         for meal_type in ["breakfast", "lunch", "dinner"]:
@@ -1248,7 +1261,8 @@ async def get_shopping_list(week_start: str, user: User = Depends(get_current_us
                 recipe_ids.add(rid)
                 portions = meal.get("portions", 2)
                 recipe_portions[rid] = recipe_portions.get(rid, 0) + portions
-                # Also collect side dish portions
+
+                # Side dishes
                 for sd in meal.get("side_dishes", []):
                     if sd.get("recipe_id"):
                         sd_id = sd["recipe_id"]
