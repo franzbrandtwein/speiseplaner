@@ -16,6 +16,9 @@ import json
 import re
 from datetime import datetime, timezone, timedelta
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from pywebpush import webpush, WebPushException
+from zoneinfo import ZoneInfo
+import asyncio
 
 import smtplib
 from email.mime.text import MIMEText
@@ -1188,12 +1191,12 @@ async def get_meal_plan(week_start: str, user: User = Depends(get_current_user))
     return plan
 
 @api_router.post("/mealplans")
-async def save_meal_plan(plan_data: MealPlanUpdate, user: User = Depends(get_current_user)):
-    """Create or update meal plan - persönlich oder Gruppen-Plan"""
+async def save_meal_plan(plan_data: MealPlanUpdate, request: Request, user: User = Depends(get_current_user)):
+    """Create or update meal plan - persönlich oder Gruppen-Plan + push notification"""
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     group_id = user_doc.get("group_id")
     
-    # Suche bestehenden Plan
+    # Bestehenden Plan laden für Vergleich (Instant-Notification)
     if group_id:
         existing = await db.meal_plans.find_one({
             "group_id": group_id,
@@ -1206,6 +1209,19 @@ async def save_meal_plan(plan_data: MealPlanUpdate, user: User = Depends(get_cur
             "week_start": plan_data.week_start
         }, {"_id": 0})
     
+    # Detect new meals for instant notification
+    new_meals = []
+    old_days = {d["date"]: d for d in (existing or {}).get("days", [])} if existing else {}
+    for new_day in plan_data.days:
+        old_day = old_days.get(new_day.date, {})
+        for mt in ["breakfast", "lunch", "dinner"]:
+            new_meal = getattr(new_day, mt, None)
+            old_meal = old_day.get(mt)
+            if new_meal and new_meal.recipe_id:
+                old_rid = old_meal.get("recipe_id") if isinstance(old_meal, dict) else None
+                if new_meal.recipe_id != old_rid:
+                    new_meals.append((new_day.date, mt, new_meal.recipe_name or "Neues Gericht"))
+    
     if existing:
         await db.meal_plans.update_one(
             {"plan_id": existing["plan_id"]},
@@ -1214,20 +1230,56 @@ async def save_meal_plan(plan_data: MealPlanUpdate, user: User = Depends(get_cur
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }}
         )
-        return {"message": "Speiseplan aktualisiert", "plan_id": existing["plan_id"]}
+        plan_id = existing["plan_id"]
+    else:
+        plan = MealPlan(
+            user_id=user.user_id,
+            group_id=group_id,
+            week_start=plan_data.week_start,
+            days=plan_data.days
+        )
+        plan_doc = plan.model_dump()
+        plan_doc['created_at'] = plan_doc['created_at'].isoformat()
+        plan_doc['updated_at'] = plan_doc['updated_at'].isoformat()
+        await db.meal_plans.insert_one(plan_doc)
+        plan_id = plan.plan_id
     
-    plan = MealPlan(
-        user_id=user.user_id,
-        group_id=group_id,
-        week_start=plan_data.week_start,
-        days=plan_data.days
-    )
-    plan_doc = plan.model_dump()
-    plan_doc['created_at'] = plan_doc['created_at'].isoformat()
-    plan_doc['updated_at'] = plan_doc['updated_at'].isoformat()
+    # Send instant push notifications for new meals
+    if new_meals:
+        prefs = await db.notification_prefs.find_one({"user_id": user.user_id}, {"_id": 0})
+        if prefs and prefs.get("new_meal_notification", True):
+            berlin_tz = ZoneInfo("Europe/Berlin")
+            for date_str, meal_type, recipe_name in new_meals:
+                try:
+                    dt = datetime.strptime(date_str, "%Y-%m-%d")
+                    day_label = WEEKDAY_LABELS.get(dt.weekday(), date_str)
+                except:
+                    day_label = date_str
+                meal_label = MEAL_LABELS.get(meal_type, meal_type)
+                body = f"{recipe_name} – {day_label}, {meal_label}"
+                await send_push_to_user(user.user_id, "Neues Gericht im Speiseplan", body, "/meal-planner", "new_meal")
+            
+            # Notify group members too
+            if group_id:
+                group = await db.groups.find_one({"group_id": group_id}, {"_id": 0})
+                if group:
+                    for member_id in group.get("member_ids", []):
+                        if member_id == user.user_id:
+                            continue
+                        m_prefs = await db.notification_prefs.find_one({"user_id": member_id}, {"_id": 0})
+                        if m_prefs and m_prefs.get("new_meal_notification", True):
+                            for date_str, meal_type, recipe_name in new_meals:
+                                try:
+                                    dt = datetime.strptime(date_str, "%Y-%m-%d")
+                                    day_label = WEEKDAY_LABELS.get(dt.weekday(), date_str)
+                                except:
+                                    day_label = date_str
+                                meal_label = MEAL_LABELS.get(meal_type, meal_type)
+                                body = f"{user.name} hat hinzugefügt: {recipe_name} – {day_label}, {meal_label}"
+                                await send_push_to_user(member_id, "Speiseplan aktualisiert", body, "/meal-planner", "new_meal")
     
-    await db.meal_plans.insert_one(plan_doc)
-    return {"message": "Speiseplan erstellt", "plan_id": plan.plan_id}
+    msg = "Speiseplan aktualisiert" if existing else "Speiseplan erstellt"
+    return {"message": msg, "plan_id": plan_id}
 
 # ============ SHOPPING LIST ENDPOINTS ============
 
@@ -1557,6 +1609,233 @@ async def leave_group(user: User = Depends(get_current_user)):
     
     return {"message": "Gruppe verlassen"}
 
+# ============ PUSH NOTIFICATIONS ============
+
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY')
+VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY')
+VAPID_CLAIMS_EMAIL = os.environ.get('VAPID_CLAIMS_EMAIL', 'mailto:admin@kochplaner.app')
+
+class PushSubscriptionData(BaseModel):
+    endpoint: str
+    keys: dict
+
+class NotificationPrefs(BaseModel):
+    meal_reminder: bool = True
+    meal_reminder_time: str = "08:00"
+    shopping_reminder: bool = True
+    shopping_reminder_day: str = "sonntag"
+    shopping_reminder_time: str = "10:00"
+    empty_plan_reminder: bool = True
+    empty_plan_reminder_time: str = "18:00"
+    new_meal_notification: bool = True
+
+WEEKDAY_MAP = {0: "montag", 1: "dienstag", 2: "mittwoch", 3: "donnerstag",
+               4: "freitag", 5: "samstag", 6: "sonntag"}
+WEEKDAY_LABELS = {0: "Montag", 1: "Dienstag", 2: "Mittwoch", 3: "Donnerstag",
+                  4: "Freitag", 5: "Samstag", 6: "Sonntag"}
+MEAL_LABELS = {"breakfast": "Frühstück", "lunch": "Mittagessen", "dinner": "Abendessen"}
+
+async def send_push_to_user(user_id: str, title: str, body: str, url: str = "/meal-planner", tag: str = "general"):
+    if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
+        return 0
+    subs = await db.push_subscriptions.find({"user_id": user_id}, {"_id": 0}).to_list(100)
+    sent = 0
+    for sub in subs:
+        try:
+            webpush(
+                subscription_info={"endpoint": sub["endpoint"], "keys": sub["keys"]},
+                data=json.dumps({"title": title, "body": body, "url": url, "tag": tag}),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": VAPID_CLAIMS_EMAIL}
+            )
+            sent += 1
+        except WebPushException as e:
+            if e.response and e.response.status_code in (404, 410):
+                await db.push_subscriptions.delete_one({"subscription_id": sub["subscription_id"]})
+            else:
+                logger.error(f"Push error: {e}")
+        except Exception as e:
+            logger.error(f"Push error: {e}")
+    return sent
+
+def get_week_start_for_date(dt):
+    monday = dt - timedelta(days=dt.weekday())
+    return monday.strftime("%Y-%m-%d")
+
+async def check_scheduled_notifications():
+    berlin_tz = ZoneInfo("Europe/Berlin")
+    local_now = datetime.now(berlin_tz)
+    current_time = local_now.strftime("%H:%M")
+    current_weekday = WEEKDAY_MAP[local_now.weekday()]
+    today_str = local_now.strftime("%Y-%m-%d")
+    tomorrow = local_now + timedelta(days=1)
+    tomorrow_str = tomorrow.strftime("%Y-%m-%d")
+    week_start = get_week_start_for_date(local_now)
+
+    active_user_ids = await db.push_subscriptions.distinct("user_id")
+    for user_id in active_user_ids:
+        prefs = await db.notification_prefs.find_one({"user_id": user_id}, {"_id": 0})
+        if not prefs:
+            continue
+
+        # --- Daily meal reminder ---
+        if prefs.get("meal_reminder") and current_time == prefs.get("meal_reminder_time", "08:00"):
+            log_key = f"{user_id}:meal_reminder:{today_str}"
+            already = await db.notification_log.find_one({"key": log_key})
+            if not already:
+                user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+                group_id = user_doc.get("group_id") if user_doc else None
+                query = {"group_id": group_id, "week_start": week_start} if group_id else {"user_id": user_id, "group_id": None, "week_start": week_start}
+                plan = await db.meal_plans.find_one(query, {"_id": 0})
+                if plan:
+                    day = next((d for d in plan.get("days", []) if d.get("date") == today_str), None)
+                    if day:
+                        meals = []
+                        for mt, label in MEAL_LABELS.items():
+                            m = day.get(mt)
+                            if m and m.get("recipe_name"):
+                                meals.append(f"{label}: {m['recipe_name']}")
+                        if meals:
+                            body = "\n".join(meals)
+                            await send_push_to_user(user_id, f"Heute auf dem Plan ({WEEKDAY_LABELS[local_now.weekday()]})", body, "/meal-planner", "meal_reminder")
+                await db.notification_log.insert_one({"key": log_key, "sent_at": datetime.now(timezone.utc).isoformat()})
+
+        # --- Shopping reminder ---
+        if prefs.get("shopping_reminder") and current_weekday == prefs.get("shopping_reminder_day", "sonntag") and current_time == prefs.get("shopping_reminder_time", "10:00"):
+            log_key = f"{user_id}:shopping_reminder:{today_str}"
+            already = await db.notification_log.find_one({"key": log_key})
+            if not already:
+                await send_push_to_user(user_id, "Einkaufsliste", "Vergiss nicht, die Einkaufsliste für diese Woche zu prüfen!", "/shopping-list", "shopping_reminder")
+                await db.notification_log.insert_one({"key": log_key, "sent_at": datetime.now(timezone.utc).isoformat()})
+
+        # --- Empty plan reminder ---
+        if prefs.get("empty_plan_reminder") and current_time == prefs.get("empty_plan_reminder_time", "18:00"):
+            log_key = f"{user_id}:empty_plan:{today_str}"
+            already = await db.notification_log.find_one({"key": log_key})
+            if not already:
+                user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+                group_id = user_doc.get("group_id") if user_doc else None
+                tom_week_start = get_week_start_for_date(tomorrow)
+                query = {"group_id": group_id, "week_start": tom_week_start} if group_id else {"user_id": user_id, "group_id": None, "week_start": tom_week_start}
+                plan = await db.meal_plans.find_one(query, {"_id": 0})
+                day = None
+                if plan:
+                    day = next((d for d in plan.get("days", []) if d.get("date") == tomorrow_str), None)
+                empty_slots = []
+                if not day:
+                    empty_slots = list(MEAL_LABELS.values())
+                else:
+                    for mt, label in MEAL_LABELS.items():
+                        if not day.get(mt) or not day[mt].get("recipe_id"):
+                            empty_slots.append(label)
+                if empty_slots:
+                    body = f"Morgen ({WEEKDAY_LABELS[tomorrow.weekday()]}) fehlt noch: {', '.join(empty_slots)}"
+                    await send_push_to_user(user_id, "Speiseplan unvollständig", body, "/meal-planner", "empty_plan")
+                await db.notification_log.insert_one({"key": log_key, "sent_at": datetime.now(timezone.utc).isoformat()})
+
+    # Cleanup old log entries (older than 3 days)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    await db.notification_log.delete_many({"sent_at": {"$lt": cutoff}})
+
+async def notification_scheduler_loop():
+    while True:
+        try:
+            await check_scheduled_notifications()
+        except Exception as e:
+            logger.error(f"Notification scheduler error: {e}")
+        await asyncio.sleep(60)
+
+# ── Notification Endpoints ──
+
+@api_router.get("/notifications/vapid-public-key")
+async def get_vapid_public_key():
+    return {"public_key": VAPID_PUBLIC_KEY or ""}
+
+@api_router.post("/notifications/subscribe")
+async def subscribe_push(data: PushSubscriptionData, user: User = Depends(get_current_user)):
+    existing = await db.push_subscriptions.find_one(
+        {"user_id": user.user_id, "endpoint": data.endpoint}, {"_id": 0}
+    )
+    if existing:
+        await db.push_subscriptions.update_one(
+            {"subscription_id": existing["subscription_id"]},
+            {"$set": {"keys": data.keys, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"message": "Subscription aktualisiert", "subscription_id": existing["subscription_id"]}
+
+    sub_id = f"pushsub_{uuid.uuid4().hex[:12]}"
+    await db.push_subscriptions.insert_one({
+        "subscription_id": sub_id, "user_id": user.user_id,
+        "endpoint": data.endpoint, "keys": data.keys,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    prefs = await db.notification_prefs.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not prefs:
+        await db.notification_prefs.insert_one({
+            "user_id": user.user_id,
+            "meal_reminder": True, "meal_reminder_time": "08:00",
+            "shopping_reminder": True, "shopping_reminder_day": "sonntag", "shopping_reminder_time": "10:00",
+            "empty_plan_reminder": True, "empty_plan_reminder_time": "18:00",
+            "new_meal_notification": True
+        })
+    return {"message": "Push-Benachrichtigungen aktiviert", "subscription_id": sub_id}
+
+@api_router.delete("/notifications/unsubscribe")
+async def unsubscribe_push(request: Request, user: User = Depends(get_current_user)):
+    body = await request.json()
+    endpoint = body.get("endpoint")
+    if endpoint:
+        await db.push_subscriptions.delete_many({"user_id": user.user_id, "endpoint": endpoint})
+    else:
+        await db.push_subscriptions.delete_many({"user_id": user.user_id})
+    return {"message": "Push-Benachrichtigungen deaktiviert"}
+
+@api_router.get("/notifications/preferences")
+async def get_notification_prefs(user: User = Depends(get_current_user)):
+    prefs = await db.notification_prefs.find_one({"user_id": user.user_id}, {"_id": 0})
+    if not prefs:
+        return {
+            "meal_reminder": True, "meal_reminder_time": "08:00",
+            "shopping_reminder": True, "shopping_reminder_day": "sonntag", "shopping_reminder_time": "10:00",
+            "empty_plan_reminder": True, "empty_plan_reminder_time": "18:00",
+            "new_meal_notification": True
+        }
+    prefs.pop("user_id", None)
+    return prefs
+
+@api_router.put("/notifications/preferences")
+async def update_notification_prefs(data: NotificationPrefs, user: User = Depends(get_current_user)):
+    prefs_data = data.model_dump()
+    prefs_data["user_id"] = user.user_id
+    await db.notification_prefs.update_one(
+        {"user_id": user.user_id}, {"$set": prefs_data}, upsert=True
+    )
+    return {"message": "Einstellungen gespeichert"}
+
+@api_router.post("/notifications/test")
+async def send_test_notification(user: User = Depends(get_current_user)):
+    sent = await send_push_to_user(user.user_id, "Kochplaner", "Push-Benachrichtigungen funktionieren!", "/meal-planner", "test")
+    if sent == 0:
+        raise HTTPException(status_code=400, detail="Keine aktiven Push-Subscriptions gefunden")
+    return {"message": f"Test-Benachrichtigung gesendet", "sent": sent}
+
+@api_router.get("/notifications/status")
+async def get_notification_status(user: User = Depends(get_current_user)):
+    count = await db.push_subscriptions.count_documents({"user_id": user.user_id})
+    prefs = await db.notification_prefs.find_one({"user_id": user.user_id}, {"_id": 0})
+    if prefs:
+        prefs.pop("user_id", None)
+    return {
+        "subscribed": count > 0,
+        "subscription_count": count,
+        "preferences": prefs or {
+            "meal_reminder": True, "meal_reminder_time": "08:00",
+            "shopping_reminder": True, "shopping_reminder_day": "sonntag", "shopping_reminder_time": "10:00",
+            "empty_plan_reminder": True, "empty_plan_reminder_time": "18:00",
+            "new_meal_notification": True
+        }
+    }
+
 # ============ ROOT ============
 
 @api_router.get("/")
@@ -1565,6 +1844,10 @@ async def root():
 
 # Include the router
 app.include_router(api_router)
+
+@app.on_event("startup")
+async def start_notification_scheduler():
+    asyncio.create_task(notification_scheduler_loop())
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

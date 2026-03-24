@@ -204,4 +204,49 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// ============================================================
+// PUSH NOTIFICATIONS
+// ============================================================
+self.addEventListener('push', (event) => {
+  let data = { title: 'Kochplaner', body: 'Neue Benachrichtigung' };
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data.body = event.data.text();
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-192x192.png',
+    tag: data.tag || 'general',
+    data: { url: data.url || '/meal-planner' },
+    vibrate: [200, 100, 200],
+    renotify: true,
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Kochplaner', options)
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/meal-planner';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      return clients.openWindow(targetUrl);
+    })
+  );
+});
+
 console.log('[SW] Speisenplaner Service Worker loaded');

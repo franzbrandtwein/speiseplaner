@@ -5,7 +5,7 @@ import { useAuth, API } from "../App";
 import { Button } from "./ui/button";
 import { 
   ChefHat, LayoutDashboard, BookOpen, Calendar, ShoppingCart, 
-  LogOut, Menu, X, User, Sparkles, Users, RefreshCw
+  LogOut, Menu, X, User, Sparkles, Users, RefreshCw, Bell
 } from "lucide-react";
 import InstallPrompt, { InstallButton } from "./InstallPrompt";
 import {
@@ -60,6 +60,7 @@ const Layout = ({ children }) => {
     { path: "/meal-planner", label: "Speiseplan", icon: Calendar },
     { path: "/shopping-list", label: "Einkaufsliste", icon: ShoppingCart },
     { path: "/group", label: "Gruppe", icon: Users },
+    { path: "/notifications", label: "Benachrichtigungen", icon: Bell },
   ];
 
   return (
@@ -200,7 +201,7 @@ const Layout = ({ children }) => {
 
       {/* Mobile Bottom Nav */}
       <nav className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-100 p-2 flex justify-around items-center z-50 md:hidden backdrop-blur-lg bg-white/90">
-        {navItems.map(({ path, label, icon: Icon }) => {
+        {navItems.slice(0, 5).map(({ path, label, icon: Icon }) => {
           const isActive = location.pathname === path || 
             (path !== "/dashboard" && location.pathname.startsWith(path));
           return (
