@@ -31,7 +31,8 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes }) =>
   const [sideSearch, setSideSearch] = useState("");
   const [showSideDropdown, setShowSideDropdown] = useState(false);
 
-  // Reset whenever dialog opens
+  // Reset whenever dialog opens – intentionally only depends on `open` to avoid
+  // re-running when other props/state change during the same dialog session.
   useEffect(() => {
     if (!open) return;
     if (initialSlot?.recipe_id) {
@@ -401,8 +402,8 @@ const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortion
       {/* Side dishes */}
       {meal.side_dishes?.length > 0 && (
         <div className="space-y-1 border-t border-gray-100 pt-2">
-          {meal.side_dishes.map(sd => (
-            <div key={sd.recipe_id} className="flex items-center gap-1 group">
+          {meal.side_dishes.map((sd, idx) => (
+            <div key={`${sd.recipe_id}-${idx}`} className="flex items-center gap-1 group">
               <span className="text-[10px] text-emerald-700 flex-1 truncate">↳ {sd.recipe_name}</span>
               <Input
                 type="number"
