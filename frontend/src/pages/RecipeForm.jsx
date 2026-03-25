@@ -146,7 +146,12 @@ const RecipeForm = () => {
   };
 
   const addIngredient = () => {
+    const newIdx = formData.ingredients.length;
     updateField("ingredients", [...formData.ingredients, { name: "", amount: "", unit: "g" }]);
+    setTimeout(() => {
+      const el = document.querySelector(`[data-testid="ingredient-name-${newIdx}"]`);
+      if (el) el.focus();
+    }, 50);
   };
 
   const removeIngredient = (index) => {

@@ -86,13 +86,19 @@
   - Aktive Artikel automatisch in der Einkaufsliste
   - Eigene Verwaltungs-Seite /staple-items
   - Einkaufsliste zeigt Rezept-Zutaten und Sonstige Artikel getrennt
+- [x] Recipe Image Upload (VERIFIZIERT - 10/10 Backend, Frontend 100%)
+  - Mehrere Bilder pro Rezept (Galerie)
+  - Upload im Rezeptformular (Drag & Drop + URL Fallback) und auf Rezept-Detailseite
+  - Automatischer Bild-Import von externen URLs beim Rezept-Import
+  - Galerie-Navigation mit Thumbnails, Delete-Button
+  - Object Storage via Emergent Integration
+- [x] Auto-Fokus auf neues Zutaten-Feld beim Klick auf "Zutat hinzufügen"
 
 ## Prioritized Backlog
 
 ### P1 (Next)
 - [ ] Import von weiteren Rezept-Websites testen
 - [ ] Alternative Import-Methode für blockierende Seiten (z.B. REWE) über Clipboard
-- [ ] Recipe image upload (currently URL only)
 
 ### P2 (Future)
 - [ ] Background Sync für Offline-Aktionen
