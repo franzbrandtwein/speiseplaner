@@ -299,7 +299,7 @@ agent_communication:
   - agent: "main"
     message: "PWA-Implementierung abgeschlossen. SW ist aktiv (verified via browser), Manifest geladen (10 Icons), Offline-Seite funktioniert. InstallPrompt und Update-Banner in Layout.jsx integriert."
   - agent: "testing"
-    message: "✅ PWA Install Button Test Complete: Verified InstallPrompt component on landing page (https://meal-saver-13.preview.emergentagent.com). Desktop: 'Installieren' button visible in nav, modal opens with browser-specific instructions (Chrome/Edge detected), modal closes on 'Verstanden' click. Mobile (390x844): Install icon visible, modal functionality working. All tests passed."
+    message: "✅ PWA Install Button Test Complete: Verified InstallPrompt component on landing page (https://essen-planner-test.preview.emergentagent.com). Desktop: 'Installieren' button visible in nav, modal opens with browser-specific instructions (Chrome/Edge detected), modal closes on 'Verstanden' click. Mobile (390x844): Install icon visible, modal functionality working. All tests passed."
   - agent: "testing"
     message: "✅ Beilagen Feature Test Complete: Tested complete flow from RecipeForm to RecipeDetail. Login successful with import_test@test.de. Created recipe 'Schnitzel mit Beilagen' with side dish 'Spaghetti Carbonara'. Search input, dropdown, chip selection, save, and display all working perfectly. Side dish navigation verified. No console errors. All 21 test steps passed successfully."
   - agent: "testing"

@@ -18,7 +18,21 @@ import InvitePage from "./pages/InvitePage";
 import NotificationSettings from "./pages/NotificationSettings";
 import StapleItems from "./pages/StapleItems";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+// Smart backend URL: adapts to the host the user accesses from
+// Fixes cross-origin issues when accessing selfhosted app via domain/different host
+const BACKEND_URL = (() => {
+  const configured = process.env.REACT_APP_BACKEND_URL;
+  if (!configured || typeof window === 'undefined') return configured;
+  try {
+    const configUrl = new URL(configured);
+    const currentHost = window.location.hostname;
+    if (configUrl.hostname !== currentHost) {
+      configUrl.hostname = currentHost;
+      return configUrl.origin;
+    }
+  } catch (e) {}
+  return configured;
+})();
 export const API = `${BACKEND_URL}/api`;
 
 // Auth Context

@@ -12,7 +12,7 @@ from pymongo import MongoClient
 
 class SideDishesTest:
     def __init__(self):
-        self.base_url = "https://meal-saver-13.preview.emergentagent.com/api"
+        self.base_url = "https://essen-planner-test.preview.emergentagent.com/api"
         self.session_token = None
         self.user_id = None
         self.mongo_client = None
