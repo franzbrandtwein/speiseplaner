@@ -9,7 +9,7 @@ import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { 
   ChefHat, Clock, Users, Star, ArrowLeft, Edit, Trash2, 
-  AlertTriangle, DollarSign, Flame, UtensilsCrossed
+  AlertTriangle, DollarSign, Flame, UtensilsCrossed, Upload, X, ChevronLeft, ChevronRight
 } from "lucide-react";
 import {
   AlertDialog,
@@ -33,6 +33,8 @@ const RecipeDetail = () => {
   const [ratingText, setRatingText] = useState("");
   const [submittingRating, setSubmittingRating] = useState(false);
   const [hoverStars, setHoverStars] = useState(0);
+  const [galleryIdx, setGalleryIdx] = useState(0);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     fetchRecipe();
@@ -89,6 +91,38 @@ const RecipeDetail = () => {
     }
   };
 
+  const handleUploadImage = async (e) => {
+    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith("image/"));
+    if (!files.length) return;
+    setUploadingImage(true);
+    try {
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        await axios.post(`${API}/recipes/${id}/images`, fd, { withCredentials: true });
+      }
+      toast.success(files.length > 1 ? `${files.length} Bilder hochgeladen` : "Bild hochgeladen");
+      fetchRecipe();
+    } catch {
+      toast.error("Fehler beim Hochladen");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleDeleteImage = async (imageUrl) => {
+    try {
+      await axios.delete(`${API}/recipes/${id}/images`, {
+        data: { image_url: imageUrl }, withCredentials: true
+      });
+      toast.success("Bild entfernt");
+      fetchRecipe();
+      setGalleryIdx(0);
+    } catch {
+      toast.error("Fehler beim Entfernen");
+    }
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -103,6 +137,8 @@ const RecipeDetail = () => {
 
   const isOwner = recipe.user_id === user?.user_id;
   const totalTime = (recipe.prep_time || 0) + (recipe.cook_time || 0);
+  const images = recipe.images?.length > 0 ? recipe.images : (recipe.image_url ? [recipe.image_url] : []);
+  const resolveImgSrc = (url) => url?.startsWith("/api") ? `${API.replace("/api", "")}${url}` : url;
 
   return (
     <Layout>
@@ -113,14 +149,80 @@ const RecipeDetail = () => {
           Zurück zu Rezepten
         </Link>
 
-        {/* Hero Image */}
-        {recipe.image_url && (
-          <div className="aspect-[21/9] rounded-2xl overflow-hidden mb-8 bg-gray-100">
+        {/* Image Gallery */}
+        {images.length > 0 ? (
+          <div className="relative aspect-[21/9] rounded-2xl overflow-hidden mb-8 bg-gray-100 group" data-testid="image-gallery">
             <img 
-              src={recipe.image_url} 
+              src={resolveImgSrc(images[galleryIdx])} 
               alt={recipe.name}
               className="w-full h-full object-cover"
+              onError={e => e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='400'%3E%3Crect fill='%23f3f4f6' width='800' height='400'/%3E%3Ctext x='400' y='200' text-anchor='middle' fill='%239ca3af' font-size='20'%3EBild nicht verfügbar%3C/text%3E%3C/svg%3E"}
             />
+            {images.length > 1 && (
+              <>
+                <button
+                  onClick={() => setGalleryIdx(i => (i - 1 + images.length) % images.length)}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/40 hover:bg-black/60 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setGalleryIdx(i => (i + 1) % images.length)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/40 hover:bg-black/60 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                  {images.map((_, i) => (
+                    <button key={i} onClick={() => setGalleryIdx(i)}
+                      className={`w-2 h-2 rounded-full transition-all ${i === galleryIdx ? "bg-white w-6" : "bg-white/50"}`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+            {isOwner && (
+              <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => handleDeleteImage(images[galleryIdx])}
+                  className="w-8 h-8 bg-red-500/80 hover:bg-red-600 text-white rounded-lg flex items-center justify-center"
+                  title="Bild entfernen"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        ) : isOwner ? (
+          <div
+            className="aspect-[21/9] rounded-2xl mb-8 bg-gray-50 border-2 border-dashed border-gray-200 hover:border-emerald-300 flex flex-col items-center justify-center cursor-pointer transition-colors"
+            onClick={() => document.getElementById("detail-image-upload").click()}
+            data-testid="image-upload-placeholder"
+          >
+            <Upload className="w-10 h-10 text-gray-300 mb-2" />
+            <p className="text-[var(--text-muted)]">Bilder hochladen</p>
+            <input id="detail-image-upload" type="file" accept="image/*" multiple className="hidden" onChange={handleUploadImage} />
+          </div>
+        ) : null}
+
+        {/* Thumbnail strip + Add button (for owner with existing images) */}
+        {isOwner && images.length > 0 && (
+          <div className="flex items-center gap-2 mb-6 -mt-4">
+            {images.map((url, i) => (
+              <button key={i} onClick={() => setGalleryIdx(i)}
+                className={`w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${i === galleryIdx ? "border-emerald-500 ring-1 ring-emerald-300" : "border-transparent opacity-70 hover:opacity-100"}`}
+              >
+                <img src={resolveImgSrc(url)} alt="" className="w-full h-full object-cover" />
+              </button>
+            ))}
+            <label className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-200 hover:border-emerald-300 flex items-center justify-center cursor-pointer transition-colors">
+              {uploadingImage ? (
+                <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4 text-gray-400" />
+              )}
+              <input type="file" accept="image/*" multiple className="hidden" onChange={handleUploadImage} data-testid="detail-add-image-btn" />
+            </label>
           </div>
         )}
 

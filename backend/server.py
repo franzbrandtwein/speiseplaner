@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, File, UploadFile, Query
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -19,6 +19,7 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage
 from pywebpush import webpush, WebPushException
 from zoneinfo import ZoneInfo
 import asyncio
+import requests as sync_requests
 
 import smtplib
 from email.mime.text import MIMEText
@@ -28,6 +29,42 @@ import configparser
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# ============ OBJECT STORAGE ============
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+APP_NAME = "kochplaner"
+_storage_key = None
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+def init_storage():
+    global _storage_key
+    if _storage_key:
+        return _storage_key
+    resp = sync_requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
+    resp.raise_for_status()
+    _storage_key = resp.json()["storage_key"]
+    return _storage_key
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    resp = sync_requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=120
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+def get_object(path: str):
+    key = init_storage()
+    resp = sync_requests.get(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key}, timeout=60
+    )
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 # SMTP Config laden
 SMTP_CONFIG_PATH = Path("/etc/speisenplaner/smtp.conf")
@@ -110,6 +147,7 @@ class Recipe(BaseModel):
     difficulty: str = "mittel"  # leicht, mittel, schwer
     category: str = "Hauptgericht"
     image_url: Optional[str] = None
+    images: List[str] = []  # storage paths for gallery
     nutrition: Optional[NutritionInfo] = None
     allergens: List[str] = []
     cost_per_portion: Optional[float] = None
@@ -1028,6 +1066,26 @@ async def import_recipe_save(recipe_data: RecipeCreate, user: User = Depends(get
     recipe_doc = recipe.model_dump()
     recipe_doc['created_at'] = recipe_doc['created_at'].isoformat()
     recipe_doc['updated_at'] = recipe_doc['updated_at'].isoformat()
+    
+    # Download and store external image if present
+    ext_image = recipe_doc.get("image_url")
+    if ext_image and ext_image.startswith("http"):
+        try:
+            img_resp = sync_requests.get(ext_image, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+            if img_resp.status_code == 200 and img_resp.headers.get("Content-Type", "").startswith("image/"):
+                ct = img_resp.headers["Content-Type"]
+                ext = ct.split("/")[-1].split(";")[0]
+                if ext not in ("jpeg", "png", "webp", "gif"):
+                    ext = "jpg"
+                image_id = uuid.uuid4().hex[:12]
+                storage_path = f"{APP_NAME}/recipes/{recipe_doc['recipe_id']}/{image_id}.{ext}"
+                put_object(storage_path, img_resp.content, ct)
+                local_url = f"/api/images/{storage_path}"
+                recipe_doc["image_url"] = local_url
+                recipe_doc["images"] = [local_url]
+        except Exception as e:
+            logger.warning(f"Could not download import image: {e}")
+    
     await db.recipes.insert_one(recipe_doc)
     recipe_doc.pop('_id', None)
     return recipe_doc
@@ -1052,6 +1110,10 @@ async def get_recipe(recipe_id: str, user: User = Depends(get_current_user)):
     else:
         recipe["avg_rating"] = 0
         recipe["rating_count"] = 0
+    
+    # Ensure images field exists (backward compat)
+    if "images" not in recipe:
+        recipe["images"] = [recipe["image_url"]] if recipe.get("image_url") else []
 
     # Populate side dish details
     side_dish_ids = recipe.get("side_dishes", [])
@@ -1101,6 +1163,72 @@ async def delete_recipe(recipe_id: str, user: User = Depends(get_current_user)):
     await db.recipes.delete_one({"recipe_id": recipe_id})
     await db.ratings.delete_many({"recipe_id": recipe_id})
     return {"message": "Recipe deleted"}
+
+# ============ IMAGE UPLOAD ENDPOINTS ============
+
+@api_router.post("/recipes/{recipe_id}/images")
+async def upload_recipe_image(recipe_id: str, file: UploadFile = File(...), user: User = Depends(get_current_user)):
+    """Upload an image for a recipe"""
+    recipe = await db.recipes.find_one({"recipe_id": recipe_id}, {"_id": 0})
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
+    
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Nur JPEG, PNG, WebP und GIF erlaubt")
+    
+    data = await file.read()
+    if len(data) > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="Bild zu groß (max 10 MB)")
+    
+    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "jpg"
+    image_id = uuid.uuid4().hex[:12]
+    storage_path = f"{APP_NAME}/recipes/{recipe_id}/{image_id}.{ext}"
+    
+    try:
+        put_object(storage_path, data, file.content_type)
+    except Exception as e:
+        logger.error(f"Image upload error: {e}")
+        raise HTTPException(status_code=500, detail="Fehler beim Hochladen")
+    
+    image_url = f"/api/images/{storage_path}"
+    images = recipe.get("images", [])
+    images.append(image_url)
+    update_fields = {"images": images}
+    if not recipe.get("image_url"):
+        update_fields["image_url"] = image_url
+    await db.recipes.update_one({"recipe_id": recipe_id}, {"$set": update_fields})
+    
+    return {"image_url": image_url, "images": images}
+
+@api_router.delete("/recipes/{recipe_id}/images")
+async def delete_recipe_image(recipe_id: str, request: Request, user: User = Depends(get_current_user)):
+    """Remove an image from a recipe"""
+    body = await request.json()
+    image_url = body.get("image_url")
+    if not image_url:
+        raise HTTPException(status_code=400, detail="image_url required")
+    
+    recipe = await db.recipes.find_one({"recipe_id": recipe_id}, {"_id": 0})
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
+    
+    images = [img for img in recipe.get("images", []) if img != image_url]
+    update_fields = {"images": images}
+    if recipe.get("image_url") == image_url:
+        update_fields["image_url"] = images[0] if images else None
+    await db.recipes.update_one({"recipe_id": recipe_id}, {"$set": update_fields})
+    
+    return {"message": "Bild entfernt", "images": images}
+
+@api_router.get("/images/{path:path}")
+async def serve_image(path: str):
+    """Serve an image from object storage"""
+    try:
+        data, content_type = get_object(path)
+        return Response(content=data, media_type=content_type)
+    except Exception as e:
+        logger.error(f"Image serve error: {e}")
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden")
 
 # ============ RATING ENDPOINTS ============
 

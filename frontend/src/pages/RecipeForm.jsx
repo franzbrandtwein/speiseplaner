@@ -18,7 +18,7 @@ import {
 import { Checkbox } from "../components/ui/checkbox";
 import { Switch } from "../components/ui/switch";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, Save, Image, Users, Search, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, Image, Upload, Users, Search, X } from "lucide-react";
 
 const RecipeForm = () => {
   const { id } = useParams();
@@ -34,6 +34,9 @@ const RecipeForm = () => {
   const [allRecipes, setAllRecipes] = useState([]);
   const [sideDishSearch, setSideDishSearch] = useState("");
   const [showSideDishDropdown, setShowSideDishDropdown] = useState(false);
+  const [existingImages, setExistingImages] = useState([]);
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -74,6 +77,7 @@ const RecipeForm = () => {
         if (isEditing) {
           const recipeRes = await axios.get(`${API}/recipes/${id}`, { withCredentials: true });
           const recipe = recipeRes.data;
+          setExistingImages(recipe.images || (recipe.image_url ? [recipe.image_url] : []));
           setFormData({
             name: recipe.name || "",
             description: recipe.description || "",
@@ -183,6 +187,51 @@ const RecipeForm = () => {
     }));
   };
 
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith("image/"));
+    if (files.length) setPendingFiles(prev => [...prev, ...files]);
+  };
+
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+    if (files.length) setPendingFiles(prev => [...prev, ...files]);
+  };
+
+  const removePendingFile = (idx) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const removeExistingImage = async (imageUrl) => {
+    if (!id) return;
+    try {
+      await axios.delete(`${API}/recipes/${id}/images`, {
+        data: { image_url: imageUrl }, withCredentials: true
+      });
+      setExistingImages(prev => prev.filter(u => u !== imageUrl));
+      toast.success("Bild entfernt");
+    } catch {
+      toast.error("Fehler beim Entfernen");
+    }
+  };
+
+  const uploadFiles = async (recipeId) => {
+    if (!pendingFiles.length) return;
+    setUploading(true);
+    for (const file of pendingFiles) {
+      const fd = new FormData();
+      fd.append("file", file);
+      try {
+        await axios.post(`${API}/recipes/${recipeId}/images`, fd, { withCredentials: true });
+      } catch (err) {
+        console.error("Upload error:", err);
+        toast.error(`Fehler beim Hochladen von ${file.name}`);
+      }
+    }
+    setPendingFiles([]);
+    setUploading(false);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -211,9 +260,11 @@ const RecipeForm = () => {
 
       if (isEditing) {
         await axios.put(`${API}/recipes/${id}`, payload, { withCredentials: true });
+        await uploadFiles(id);
         toast.success("Rezept aktualisiert");
       } else {
         const response = await axios.post(`${API}/recipes`, payload, { withCredentials: true });
+        await uploadFiles(response.data.recipe_id);
         toast.success("Rezept erstellt");
         navigate(`/recipes/${response.data.recipe_id}`);
         return;
@@ -373,28 +424,82 @@ const RecipeForm = () => {
               </div>
 
               <div>
-                <Label htmlFor="image_url">Bild-URL</Label>
-                <div className="flex gap-2 mt-1">
+                <Label>Bilder</Label>
+                {/* Existing + pending images gallery */}
+                {(existingImages.length > 0 || pendingFiles.length > 0) && (
+                  <div className="flex flex-wrap gap-3 mt-2 mb-3">
+                    {existingImages.map((url, idx) => (
+                      <div key={`ex-${idx}`} className="relative group w-24 h-24">
+                        <img
+                          src={url.startsWith("/api") ? `${API.replace("/api", "")}${url}` : url}
+                          alt=""
+                          className="w-24 h-24 rounded-lg object-cover border border-gray-200"
+                          onError={e => e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Crect fill='%23f3f4f6' width='96' height='96'/%3E%3C/svg%3E"}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeExistingImage(url)}
+                          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {pendingFiles.map((file, idx) => (
+                      <div key={`pend-${idx}`} className="relative group w-24 h-24">
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt=""
+                          className="w-24 h-24 rounded-lg object-cover border-2 border-dashed border-emerald-300"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removePendingFile(idx)}
+                          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                        <span className="absolute bottom-0 left-0 right-0 bg-emerald-500 text-white text-[10px] text-center rounded-b-lg py-0.5">
+                          Neu
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Drop zone */}
+                <div
+                  className="border-2 border-dashed border-gray-200 hover:border-emerald-300 rounded-xl p-6 text-center cursor-pointer transition-colors"
+                  onClick={() => document.getElementById("image-file-input").click()}
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-emerald-400", "bg-emerald-50"); }}
+                  onDragLeave={(e) => { e.currentTarget.classList.remove("border-emerald-400", "bg-emerald-50"); }}
+                  onDrop={(e) => { e.currentTarget.classList.remove("border-emerald-400", "bg-emerald-50"); handleFileDrop(e); }}
+                  data-testid="image-drop-zone"
+                >
+                  <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-[var(--text-muted)]">
+                    Bilder hierher ziehen oder <span className="text-emerald-600 font-medium">klicken</span>
+                  </p>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">JPEG, PNG, WebP (max 10 MB)</p>
+                  <input
+                    id="image-file-input"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileSelect}
+                    data-testid="image-file-input"
+                  />
+                </div>
+                {/* URL fallback */}
+                <div className="mt-2">
                   <Input
-                    id="image_url"
                     value={formData.image_url}
                     onChange={e => updateField("image_url", e.target.value)}
-                    placeholder="https://..."
-                    className="input-field flex-1"
+                    placeholder="oder Bild-URL einfügen..."
+                    className="input-field text-sm"
                     data-testid="image-url-input"
                   />
-                  <Button type="button" variant="outline" className="shrink-0">
-                    <Image className="w-4 h-4" />
-                  </Button>
                 </div>
-                {formData.image_url && (
-                  <img 
-                    src={formData.image_url} 
-                    alt="Preview" 
-                    className="mt-2 h-32 w-auto rounded-lg object-cover"
-                    onError={e => e.target.style.display = 'none'}
-                  />
-                )}
               </div>
 
               {/* Mit Gruppe teilen */}

@@ -213,9 +213,10 @@ const RecipeCard = ({ recipe }) => {
         <div className="aspect-[4/3] overflow-hidden bg-gray-100">
           {recipe.image_url ? (
             <img 
-              src={recipe.image_url} 
+              src={recipe.image_url?.startsWith("/api") ? `${API.replace("/api", "")}${recipe.image_url}` : recipe.image_url} 
               alt={recipe.name}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              onError={e => { e.target.onerror = null; e.target.parentElement.innerHTML = '<div class="w-full h-full flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-gray-300"><path d="M17 21.5H7a4 4 0 0 1-4-4v-11a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v11a4 4 0 0 1-4 4Z"/><path d="m12 9.5-4 6h8Z"/></svg></div>'; }}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
