@@ -7,9 +7,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Card } from "../components/ui/card";
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import { API } from "../App";
 
 // Check if running on Emergent platform
 const IS_EMERGENT = window.location.hostname.includes('emergentagent.com');

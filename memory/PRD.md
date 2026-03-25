@@ -63,6 +63,9 @@
 - [x] Einkaufsliste berücksichtigt Beilagen korrekt
 - [x] Chefkoch-Import: Zubereitungstext korrekt erfasst
 - [x] PWA Install-Button immer sichtbar
+- [x] E-Mail-Authentifizierung bei Self-Hosted-Instanzen mit eigener Domain (VERIFIZIERT - 25.03.2026)
+  - Ursache: AuthPage.jsx nutzte eigene API-URL aus process.env statt der dynamischen URL aus App.js
+  - Fix: Import von API aus App.js statt lokaler Konstante
 
 ## Features (Mar 2026)
 - [x] Push-Benachrichtigungen für den Speiseplan (VERIFIZIERT - 14/14 Backend Tests, Frontend 100%)
