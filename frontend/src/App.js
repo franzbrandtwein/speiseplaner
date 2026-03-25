@@ -18,16 +18,18 @@ import InvitePage from "./pages/InvitePage";
 import NotificationSettings from "./pages/NotificationSettings";
 import StapleItems from "./pages/StapleItems";
 
-// Smart backend URL: adapts to the host the user accesses from
-// Fixes cross-origin issues when accessing selfhosted app via domain/different host
+// Smart backend URL: adapts to the host+protocol the user accesses from
+// Fixes cross-origin and mixed-content issues on selfhosted instances
 const BACKEND_URL = (() => {
   const configured = process.env.REACT_APP_BACKEND_URL;
   if (!configured || typeof window === 'undefined') return configured;
   try {
     const configUrl = new URL(configured);
     const currentHost = window.location.hostname;
-    if (configUrl.hostname !== currentHost) {
+    const currentProtocol = window.location.protocol;
+    if (configUrl.hostname !== currentHost || configUrl.protocol !== currentProtocol) {
       configUrl.hostname = currentHost;
+      configUrl.protocol = currentProtocol;
       return configUrl.origin;
     }
   } catch (e) {}

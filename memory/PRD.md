@@ -66,6 +66,7 @@
 - [x] E-Mail-Authentifizierung bei Self-Hosted-Instanzen mit eigener Domain (VERIFIZIERT - 25.03.2026)
   - Ursache: AuthPage.jsx nutzte eigene API-URL aus process.env statt der dynamischen URL aus App.js
   - Fix: Import von API aus App.js statt lokaler Konstante
+  - HTTPS-Fix: Dynamische Protokoll-Auflösung in App.js + auto-detect secure cookies im Backend via X-Forwarded-Proto
 
 ## Features (Mar 2026)
 - [x] Push-Benachrichtigungen für den Speiseplan (VERIFIZIERT - 14/14 Backend Tests, Frontend 100%)

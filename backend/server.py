@@ -411,8 +411,16 @@ async def get_current_user(request: Request) -> User:
 # Check if running in Emergent environment
 IS_EMERGENT = "emergentagent.com" in os.environ.get('CORS_ORIGINS', '')
 
+def _is_secure_request(request: Request) -> bool:
+    """Detect if request came via HTTPS (direct or behind reverse proxy)"""
+    if request.url.scheme == "https":
+        return True
+    if request.headers.get("x-forwarded-proto") == "https":
+        return True
+    return False
+
 @api_router.post("/auth/register")
-async def register(data: RegisterRequest, response: Response):
+async def register(data: RegisterRequest, request: Request, response: Response):
     """Register a new user with email/password"""
     # Check if user exists
     existing = await db.users.find_one({"email": data.email}, {"_id": 0})
@@ -449,12 +457,13 @@ async def register(data: RegisterRequest, response: Response):
     await db.user_sessions.insert_one(session_doc)
     
     # Set cookie
+    is_secure = _is_secure_request(request)
     response.set_cookie(
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=False,  # Set True for HTTPS
-        samesite="lax",
+        secure=is_secure,
+        samesite="none" if is_secure else "lax",
         path="/",
         max_age=7 * 24 * 60 * 60
     )
@@ -462,7 +471,7 @@ async def register(data: RegisterRequest, response: Response):
     return {"user_id": user_id, "email": data.email, "name": data.name}
 
 @api_router.post("/auth/login")
-async def login(data: LoginRequest, response: Response):
+async def login(data: LoginRequest, request: Request, response: Response):
     """Login with email/password"""
     user_doc = await db.users.find_one({"email": data.email}, {"_id": 0})
     
@@ -487,12 +496,13 @@ async def login(data: LoginRequest, response: Response):
     await db.user_sessions.insert_one(session_doc)
     
     # Set cookie
+    is_secure = _is_secure_request(request)
     response.set_cookie(
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=False,  # Set True for HTTPS
-        samesite="lax",
+        secure=is_secure,
+        samesite="none" if is_secure else "lax",
         path="/",
         max_age=7 * 24 * 60 * 60
     )
@@ -560,12 +570,13 @@ async def exchange_session(request: Request, response: Response):
     session_doc['created_at'] = session_doc['created_at'].isoformat()
     await db.user_sessions.insert_one(session_doc)
     
+    is_secure = _is_secure_request(request)
     response.set_cookie(
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=is_secure,
+        samesite="none" if is_secure else "lax",
         path="/",
         max_age=7 * 24 * 60 * 60
     )
