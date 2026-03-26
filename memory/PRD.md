@@ -97,8 +97,16 @@
   - Galerie-Navigation mit Thumbnails, Delete-Button
   - Object Storage via Emergent Integration
 - [x] Kompakte Speiseplan-Slots mit Detail-Overlay (25.03.2026)
-  - Slots zeigen nur Rezeptname, Portionszahl-Badge und Drag-Handle
+  - Slots zeigen nur Portionszahl-Badge und Drag-Handle
   - Klick öffnet Detail-Overlay mit Portionssteuerung, Beilagen, Bearbeiten/Entfernen
+- [x] Multi-Meal pro Slot (26.03.2026)
+  - Mehrere Gerichte pro Slot (z.B. Sandwich + Haferbrei zum Frühstück)
+  - Portionen-Badge zeigt Summe aller Portionen + "Nx" Indikator
+  - Optionale Zuordnung zu Gruppenmitgliedern (assigned_to)
+  - Backend-Modell: DayPlan.breakfast/lunch/dinner = List[MealSlot]
+  - Backward-Kompatibilität: alte Einzelgericht-Daten werden automatisch zu Arrays konvertiert
+  - Einkaufsliste aggregiert Zutaten aller Gerichte korrekt
+  - Testing: 100% Backend (11/11) + Frontend (alle Flows)
 
 ## Prioritized Backlog
 
