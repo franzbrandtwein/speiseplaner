@@ -197,12 +197,13 @@ class MealSlot(BaseModel):
     recipe_name: Optional[str] = None
     portions: int = 2
     side_dishes: List[SideDishEntry] = []
+    assigned_to: List[str] = []  # Optional: member names
 
 class DayPlan(BaseModel):
     date: str  # ISO date string YYYY-MM-DD
-    breakfast: Optional[MealSlot] = None
-    lunch: Optional[MealSlot] = None
-    dinner: Optional[MealSlot] = None
+    breakfast: List[MealSlot] = []
+    lunch: List[MealSlot] = []
+    dinner: List[MealSlot] = []
 
 class MealPlan(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -1306,9 +1307,9 @@ async def get_meal_plan(week_start: str, user: User = Depends(get_current_user))
             day_date = start_date + timedelta(days=i)
             days.append({
                 "date": day_date.strftime("%Y-%m-%d"),
-                "breakfast": None,
-                "lunch": None,
-                "dinner": None
+                "breakfast": [],
+                "lunch": [],
+                "dinner": []
             })
         return {
             "plan_id": None,
@@ -1319,12 +1320,26 @@ async def get_meal_plan(week_start: str, user: User = Depends(get_current_user))
             "is_group_plan": group_id is not None
         }
 
-    # Normalize: ensure every meal slot has side_dishes field (backwards compat)
+    # Normalize: migrate old single-meal format to multi-meal arrays
     for day in plan.get("days", []):
         for mt in ["breakfast", "lunch", "dinner"]:
             meal = day.get(mt)
-            if meal and isinstance(meal, dict) and "side_dishes" not in meal:
-                meal["side_dishes"] = []
+            if meal is None:
+                day[mt] = []
+            elif isinstance(meal, dict):
+                # Old format: single object → wrap in array
+                if "side_dishes" not in meal:
+                    meal["side_dishes"] = []
+                if "assigned_to" not in meal:
+                    meal["assigned_to"] = []
+                day[mt] = [meal] if meal.get("recipe_id") else []
+            elif isinstance(meal, list):
+                for m in meal:
+                    if isinstance(m, dict):
+                        if "side_dishes" not in m:
+                            m["side_dishes"] = []
+                        if "assigned_to" not in m:
+                            m["assigned_to"] = []
 
     plan["is_group_plan"] = plan.get("group_id") is not None
     return plan
@@ -1354,11 +1369,16 @@ async def save_meal_plan(plan_data: MealPlanUpdate, request: Request, user: User
     for new_day in plan_data.days:
         old_day = old_days.get(new_day.date, {})
         for mt in ["breakfast", "lunch", "dinner"]:
-            new_meal = getattr(new_day, mt, None)
-            old_meal = old_day.get(mt)
-            if new_meal and new_meal.recipe_id:
-                old_rid = old_meal.get("recipe_id") if isinstance(old_meal, dict) else None
-                if new_meal.recipe_id != old_rid:
+            new_meals_list = getattr(new_day, mt, []) or []
+            old_meals_raw = old_day.get(mt, [])
+            # Backward compat: old single-object format
+            if isinstance(old_meals_raw, dict):
+                old_meals_raw = [old_meals_raw] if old_meals_raw.get("recipe_id") else []
+            elif old_meals_raw is None:
+                old_meals_raw = []
+            old_rids = {m.get("recipe_id") for m in old_meals_raw if isinstance(m, dict) and m.get("recipe_id")}
+            for new_meal in new_meals_list:
+                if new_meal.recipe_id and new_meal.recipe_id not in old_rids:
                     new_meals.append((new_day.date, mt, new_meal.recipe_name or "Neues Gericht"))
     
     if existing:
@@ -1462,20 +1482,26 @@ async def get_shopping_list(week_start: str, user: User = Depends(get_current_us
 
     for day in plan.get("days", []):
         for meal_type in ["breakfast", "lunch", "dinner"]:
-            meal = day.get(meal_type)
-            if meal and meal.get("recipe_id"):
-                rid = meal["recipe_id"]
-                recipe_ids.add(rid)
-                portions = meal.get("portions", 2)
-                recipe_portions[rid] = recipe_portions.get(rid, 0) + portions
+            meals = day.get(meal_type, [])
+            # Backward compat: old single-object format
+            if isinstance(meals, dict):
+                meals = [meals] if meals.get("recipe_id") else []
+            elif meals is None:
+                meals = []
+            for meal in meals:
+                if meal and meal.get("recipe_id"):
+                    rid = meal["recipe_id"]
+                    recipe_ids.add(rid)
+                    portions = meal.get("portions", 2)
+                    recipe_portions[rid] = recipe_portions.get(rid, 0) + portions
 
-                # Side dishes
-                for sd in meal.get("side_dishes", []):
-                    if sd.get("recipe_id"):
-                        sd_id = sd["recipe_id"]
-                        sd_portions = sd.get("portions", 2)
-                        recipe_ids.add(sd_id)
-                        recipe_portions[sd_id] = recipe_portions.get(sd_id, 0) + sd_portions
+                    # Side dishes
+                    for sd in meal.get("side_dishes", []):
+                        if sd.get("recipe_id"):
+                            sd_id = sd["recipe_id"]
+                            sd_portions = sd.get("portions", 2)
+                            recipe_ids.add(sd_id)
+                            recipe_portions[sd_id] = recipe_portions.get(sd_id, 0) + sd_portions
     
     ingredients_map = {}
     
@@ -1923,9 +1949,15 @@ async def check_scheduled_notifications():
                     if day:
                         meals = []
                         for mt, label in MEAL_LABELS.items():
-                            m = day.get(mt)
-                            if m and m.get("recipe_name"):
-                                meals.append(f"{label}: {m['recipe_name']}")
+                            slot = day.get(mt, [])
+                            # Backward compat
+                            if isinstance(slot, dict):
+                                slot = [slot] if slot.get("recipe_id") else []
+                            elif slot is None:
+                                slot = []
+                            names = [m["recipe_name"] for m in slot if m.get("recipe_name")]
+                            if names:
+                                meals.append(f"{label}: {', '.join(names)}")
                         if meals:
                             body = "\n".join(meals)
                             await send_push_to_user(user_id, f"Heute auf dem Plan ({WEEKDAY_LABELS[local_now.weekday()]})", body, "/meal-planner", "meal_reminder")
@@ -1957,7 +1989,12 @@ async def check_scheduled_notifications():
                     empty_slots = list(MEAL_LABELS.values())
                 else:
                     for mt, label in MEAL_LABELS.items():
-                        if not day.get(mt) or not day[mt].get("recipe_id"):
+                        slot = day.get(mt, [])
+                        if isinstance(slot, dict):
+                            slot = [slot] if slot.get("recipe_id") else []
+                        elif slot is None:
+                            slot = []
+                        if not slot:
                             empty_slots.append(label)
                 if empty_slots:
                     body = f"Morgen ({WEEKDAY_LABELS[tomorrow.weekday()]}) fehlt noch: {', '.join(empty_slots)}"

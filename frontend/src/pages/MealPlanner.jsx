@@ -15,24 +15,23 @@ import { toast } from "sonner";
 import {
   ChevronLeft, ChevronRight, Plus, X, Save, ShoppingCart,
   Coffee, UtensilsCrossed, Moon, ChefHat, ArrowLeft,
-  Search, Minus, GripVertical
+  Search, Minus, GripVertical, Users
 } from "lucide-react";
 import { format, startOfWeek, addDays, addWeeks, subWeeks } from "date-fns";
 import { de } from "date-fns/locale";
 import { Link } from "react-router-dom";
 
 // ─── Slot Configuration Dialog ───────────────────────────────────────────────
-const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes }) => {
+const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, groupMembers = [] }) => {
   const [phase, setPhase] = useState("pick"); // "pick" | "configure"
   const [mainRecipe, setMainRecipe] = useState(null);
   const [mainPortions, setMainPortions] = useState(2);
   const [sideDishes, setSideDishes] = useState([]);
+  const [assignedTo, setAssignedTo] = useState([]);
   const [mainSearch, setMainSearch] = useState("");
   const [sideSearch, setSideSearch] = useState("");
   const [showSideDropdown, setShowSideDropdown] = useState(false);
 
-  // Reset whenever dialog opens – intentionally only depends on `open` to avoid
-  // re-running when other props/state change during the same dialog session.
   useEffect(() => {
     if (!open) return;
     if (initialSlot?.recipe_id) {
@@ -40,11 +39,13 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes }) =>
       setMainRecipe(recipe || { recipe_id: initialSlot.recipe_id, name: initialSlot.recipe_name });
       setMainPortions(initialSlot.portions || 2);
       setSideDishes(initialSlot.side_dishes || []);
+      setAssignedTo(initialSlot.assigned_to || []);
       setPhase("configure");
     } else {
       setMainRecipe(null);
       setMainPortions(2);
       setSideDishes([]);
+      setAssignedTo([]);
       setPhase("pick");
     }
     setMainSearch("");
@@ -92,6 +93,7 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes }) =>
       recipe_name: mainRecipe.name,
       portions: mainPortions,
       side_dishes: sideDishes,
+      assigned_to: assignedTo,
     });
     onClose();
   };
@@ -228,6 +230,39 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes }) =>
                 </div>
               </div>
 
+              {/* Assigned to members (optional) */}
+              {groupMembers.length > 0 && (
+                <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Users className="w-4 h-4 text-gray-500" />
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">Für wen?</h3>
+                    <span className="text-xs text-[var(--text-muted)]">(optional)</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {groupMembers.map(name => {
+                      const active = assignedTo.includes(name);
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => setAssignedTo(prev =>
+                            active ? prev.filter(n => n !== name) : [...prev, name]
+                          )}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                            active
+                              ? "bg-emerald-100 text-emerald-700 border border-emerald-300"
+                              : "bg-white text-gray-600 border border-gray-200 hover:border-emerald-300 hover:bg-emerald-50"
+                          }`}
+                          data-testid={`assign-member-${name}`}
+                        >
+                          {name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Side dishes */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -349,8 +384,11 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes }) =>
 };
 
 // ─── Slot Cell (Compact) ──────────────────────────────────────────────────────
-const SlotCell = ({ meal, onOpen, dateStr, mealKey, onDragStart, onDragOver, onDrop, onDragLeave, isDragOver, isMoveSource, isMoving, onMoveStart }) => {
-  if (!meal) {
+// ─── Slot Cell (Compact) ──────────────────────────────────────────────────────
+const SlotCell = ({ meals, totalPortions, onOpen, dateStr, mealKey, onDragStart, onDragOver, onDrop, onDragLeave, isDragOver, isMoveSource, isMoving, onMoveStart }) => {
+  const isEmpty = !meals || meals.length === 0;
+
+  if (isEmpty) {
     return (
       <Card
         className={`p-2 min-h-[56px] flex flex-col transition-all cursor-pointer border-dashed bg-[var(--bg-subtle)] ${
@@ -405,148 +443,105 @@ const SlotCell = ({ meal, onOpen, dateStr, mealKey, onDragStart, onDragOver, onD
         <GripVertical className="w-5 h-5" />
       </button>
       <span className="text-sm font-bold text-emerald-700 flex-shrink-0" data-testid={`portions-badge-${dateStr}-${mealKey}`}>
-        {meal.portions || 2}
+        {totalPortions}
       </span>
+      {meals.length > 1 && (
+        <span className="text-[10px] text-gray-400">{meals.length}x</span>
+      )}
     </Card>
   );
 };
 
-// ─── Slot Detail Dialog (Overlay) ─────────────────────────────────────────────
-const SlotDetailDialog = ({ open, onClose, meal, dateStr, mealType, onEdit, onClear, onUpdatePortions, onUpdateSidePortions, onRemoveSide, recipes }) => {
-  if (!meal) return null;
+// ─── Slot Detail Dialog (Overlay, Multi-Meal) ─────────────────────────────────
+const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, onAddMeal, onEditMeal, onRemoveMeal, onClearAll, onUpdatePortions, onUpdateSidePortions, onRemoveSide, recipes }) => {
+  if (!meals || meals.length === 0) return null;
 
   const mealLabels = { breakfast: "Frühstück", lunch: "Mittagessen", dinner: "Abendessen" };
   const dateLabel = dateStr ? format(new Date(dateStr), "EEEE, d. MMMM", { locale: de }) : "";
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="font-heading text-lg">{mealLabels[mealType] || ""}</DialogTitle>
           <p className="text-sm text-[var(--text-muted)]">{dateLabel}</p>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Main recipe */}
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-            <div className="flex items-center gap-3 mb-3">
-              {(() => {
-                const r = recipes?.find(r => r.recipe_id === meal.recipe_id);
-                return r?.image_url ? (
-                  <img src={r.image_url} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
-                ) : (
-                  <div className="w-12 h-12 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                    <ChefHat className="w-6 h-6 text-emerald-400" />
-                  </div>
-                );
-              })()}
-              <div className="flex-1 min-w-0">
-                <Link to={`/recipes/${meal.recipe_id}`} className="font-semibold text-[var(--text-primary)] hover:text-emerald-700 transition-colors truncate block">
-                  {meal.recipe_name}
-                </Link>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-[var(--text-primary)] whitespace-nowrap">Portionen:</label>
-              <div className="flex items-center gap-2">
+        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+          {meals.map((meal, index) => (
+            <div key={`${meal.recipe_id}-${index}`} className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+              <div className="flex items-center gap-3 mb-2">
+                {(() => {
+                  const r = recipes?.find(r => r.recipe_id === meal.recipe_id);
+                  return r?.image_url ? (
+                    <img src={r.image_url} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                      <ChefHat className="w-5 h-5 text-emerald-400" />
+                    </div>
+                  );
+                })()}
+                <div className="flex-1 min-w-0">
+                  <Link to={`/recipes/${meal.recipe_id}`} className="font-semibold text-sm text-[var(--text-primary)] hover:text-emerald-700 truncate block">
+                    {meal.recipe_name}
+                  </Link>
+                  {meal.assigned_to?.length > 0 && (
+                    <p className="text-xs text-emerald-600">{meal.assigned_to.join(", ")}</p>
+                  )}
+                </div>
                 <button
-                  type="button"
-                  onClick={() => onUpdatePortions(Math.max(1, (meal.portions || 2) - 1))}
-                  className="w-7 h-7 rounded-lg bg-white border border-emerald-200 flex items-center justify-center hover:bg-emerald-100 transition-colors"
+                  onClick={() => onRemoveMeal(index)}
+                  className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500 flex-shrink-0"
+                  data-testid={`remove-meal-${index}`}
                 >
-                  <Minus className="w-3 h-3" />
-                </button>
-                <Input
-                  type="number"
-                  min="1"
-                  value={meal.portions || 2}
-                  onChange={e => onUpdatePortions(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-16 h-8 text-center text-sm font-semibold"
-                  data-testid="detail-main-portions"
-                />
-                <button
-                  type="button"
-                  onClick={() => onUpdatePortions((meal.portions || 2) + 1)}
-                  className="w-7 h-7 rounded-lg bg-white border border-emerald-200 flex items-center justify-center hover:bg-emerald-100 transition-colors"
-                >
-                  <Plus className="w-3 h-3" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-            </div>
-          </div>
-
-          {/* Side dishes */}
-          {meal.side_dishes?.length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">
-                Beilagen ({meal.side_dishes.length})
-              </h3>
-              <div className="space-y-2">
-                {meal.side_dishes.map((sd, idx) => (
-                  <div key={`${sd.recipe_id}-${idx}`} className="flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
-                    {(() => {
-                      const r = recipes?.find(r => r.recipe_id === sd.recipe_id);
-                      return r?.image_url ? (
-                        <img src={r.image_url} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0">
-                          <ChefHat className="w-4 h-4 text-gray-400" />
-                        </div>
-                      );
-                    })()}
-                    <span className="flex-1 text-sm font-medium text-[var(--text-primary)] truncate min-w-0">
-                      {sd.recipe_name}
-                    </span>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => onUpdateSidePortions(sd.recipe_id, Math.max(1, (sd.portions || 2) - 1))}
-                        className="w-6 h-6 rounded-md bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100"
-                      >
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={sd.portions || 2}
-                        onChange={e => onUpdateSidePortions(sd.recipe_id, Math.max(1, parseInt(e.target.value) || 1))}
-                        className="w-14 h-7 text-center text-xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => onUpdateSidePortions(sd.recipe_id, (sd.portions || 2) + 1)}
-                        className="w-6 h-6 rounded-md bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onRemoveSide(sd.recipe_id)}
-                        className="w-6 h-6 rounded-md hover:bg-red-50 flex items-center justify-center text-gray-400 hover:text-red-500 ml-1"
-                      >
-                        <X className="w-3.5 h-3.5" />
+              {/* Portions */}
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs text-[var(--text-muted)]">Portionen:</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => onUpdatePortions(index, Math.max(1, (meal.portions || 2) - 1))} className="w-6 h-6 rounded-md bg-white border border-emerald-200 flex items-center justify-center hover:bg-emerald-100 text-xs">-</button>
+                  <span className="w-8 text-center text-sm font-semibold">{meal.portions || 2}</span>
+                  <button onClick={() => onUpdatePortions(index, (meal.portions || 2) + 1)} className="w-6 h-6 rounded-md bg-white border border-emerald-200 flex items-center justify-center hover:bg-emerald-100 text-xs">+</button>
+                </div>
+                <button onClick={() => onEditMeal(index)} className="ml-auto text-xs text-emerald-600 hover:text-emerald-700 font-medium">Bearbeiten</button>
+              </div>
+              {/* Side dishes compact */}
+              {meal.side_dishes?.length > 0 && (
+                <div className="border-t border-emerald-200 pt-2 space-y-1">
+                  {meal.side_dishes.map((sd, sdIdx) => (
+                    <div key={`${sd.recipe_id}-${sdIdx}`} className="flex items-center gap-2 text-xs">
+                      <span className="text-emerald-700 flex-1 truncate">+ {sd.recipe_name}</span>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => onUpdateSidePortions(index, sd.recipe_id, Math.max(1, (sd.portions || 2) - 1))} className="w-5 h-5 rounded bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100 text-[10px]">-</button>
+                        <span className="w-5 text-center font-medium">{sd.portions || 2}</span>
+                        <button onClick={() => onUpdateSidePortions(index, sd.recipe_id, (sd.portions || 2) + 1)} className="w-5 h-5 rounded bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100 text-[10px]">+</button>
+                      </div>
+                      <button onClick={() => onRemoveSide(index, sd.recipe_id)} className="p-0.5 hover:bg-red-50 rounded text-gray-300 hover:text-red-500">
+                        <X className="w-3 h-3" />
                       </button>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          ))}
+        </div>
 
-          {/* Action buttons */}
-          <div className="flex gap-2 pt-2">
-            <Button onClick={onEdit} className="btn-primary flex-1" data-testid="detail-edit-btn">
-              Bearbeiten
-            </Button>
-            <Button
-              variant="outline"
-              onClick={onClear}
-              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-              data-testid="detail-clear-btn"
-            >
-              <X className="w-4 h-4" /> Entfernen
-            </Button>
-          </div>
+        {/* Action buttons */}
+        <div className="flex gap-2 pt-3 border-t border-gray-100">
+          <Button onClick={onAddMeal} className="btn-primary flex-1" data-testid="detail-add-meal-btn">
+            <Plus className="w-4 h-4" /> Gericht hinzufügen
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onClearAll}
+            className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+            data-testid="detail-clear-all-btn"
+          >
+            <X className="w-4 h-4" /> Alle
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -568,6 +563,7 @@ const MealPlanner = () => {
   const [dragSource, setDragSource] = useState(null);
   const [dragOverTarget, setDragOverTarget] = useState(null);
   const [moveSource, setMoveSource] = useState(null); // Mobile tap-to-move
+  const [groupMembers, setGroupMembers] = useState([]); // For assigned_to
 
   const weekStartStr = format(currentWeekStart, "yyyy-MM-dd");
 
@@ -583,12 +579,14 @@ const MealPlanner = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [planRes, recipesRes] = await Promise.all([
+      const [planRes, recipesRes, groupRes] = await Promise.all([
         axios.get(`${API}/mealplans?week_start=${weekStartStr}`, { withCredentials: true }),
-        axios.get(`${API}/recipes`, { withCredentials: true })
+        axios.get(`${API}/recipes`, { withCredentials: true }),
+        axios.get(`${API}/groups/my`, { withCredentials: true }).catch(() => ({ data: { members: [] } }))
       ]);
       setMealPlan(planRes.data);
       setRecipes(recipesRes.data);
+      setGroupMembers((groupRes.data.members || []).map(m => m.name));
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Daten konnten nicht geladen werden");
@@ -597,9 +595,18 @@ const MealPlanner = () => {
     }
   };
 
-  const getMealForSlot = (dateStr, mealType) => {
+  const getMealsForSlot = (dateStr, mealType) => {
     const day = mealPlan?.days?.find(d => d.date === dateStr);
-    return day?.[mealType] || null;
+    const slot = day?.[mealType];
+    // Always return array
+    if (!slot) return [];
+    if (Array.isArray(slot)) return slot;
+    // Legacy single-object compat
+    return slot.recipe_id ? [slot] : [];
+  };
+
+  const getTotalPortions = (dateStr, mealType) => {
+    return getMealsForSlot(dateStr, mealType).reduce((sum, m) => sum + (m.portions || 2), 0);
   };
 
   const updateDays = useCallback((dateStr, mealType, updater) => {
@@ -614,52 +621,79 @@ const MealPlanner = () => {
   }, []);
 
   const openSlotDialog = (dateStr, mealType) => {
-    setSelectedSlot({ dateStr, mealType });
+    setSelectedSlot({ dateStr, mealType, editIndex: null });
     setDialogOpen(true);
   };
 
   const handleConfirmSlot = (slotData) => {
     if (!selectedSlot || !mealPlan) return;
-    updateDays(selectedSlot.dateStr, selectedSlot.mealType, () => slotData);
+    const { dateStr, mealType, editIndex } = selectedSlot;
+    updateDays(dateStr, mealType, prev => {
+      const meals = Array.isArray(prev) ? [...prev] : [];
+      if (editIndex !== null && editIndex < meals.length) {
+        meals[editIndex] = slotData;
+      } else {
+        meals.push(slotData);
+      }
+      return meals;
+    });
   };
 
   const clearSlot = (dateStr, mealType) => {
-    updateDays(dateStr, mealType, () => null);
+    updateDays(dateStr, mealType, () => []);
   };
 
-  const updateMainPortions = (dateStr, mealType, val) => {
-    updateDays(dateStr, mealType, prev =>
-      prev ? { ...prev, portions: Math.max(1, parseInt(val) || 1) } : prev
-    );
+  const removeMealFromSlot = (dateStr, mealType, index) => {
+    updateDays(dateStr, mealType, prev => {
+      const meals = Array.isArray(prev) ? [...prev] : [];
+      meals.splice(index, 1);
+      return meals;
+    });
   };
 
-  const updateSidePortions = (dateStr, mealType, recipe_id, val) => {
-    updateDays(dateStr, mealType, prev =>
-      prev ? {
-        ...prev,
-        side_dishes: (prev.side_dishes || []).map(sd =>
-          sd.recipe_id === recipe_id
-            ? { ...sd, portions: Math.max(1, parseInt(val) || 1) }
-            : sd
-        )
-      } : prev
-    );
+  const updateMealPortions = (dateStr, mealType, index, val) => {
+    updateDays(dateStr, mealType, prev => {
+      const meals = Array.isArray(prev) ? [...prev] : [];
+      if (index < meals.length) {
+        meals[index] = { ...meals[index], portions: Math.max(1, parseInt(val) || 1) };
+      }
+      return meals;
+    });
   };
 
-  const removeSideDish = (dateStr, mealType, recipe_id) => {
-    updateDays(dateStr, mealType, prev =>
-      prev ? {
-        ...prev,
-        side_dishes: (prev.side_dishes || []).filter(sd => sd.recipe_id !== recipe_id)
-      } : prev
-    );
+  const updateMealSidePortions = (dateStr, mealType, mealIndex, sideRecipeId, val) => {
+    updateDays(dateStr, mealType, prev => {
+      const meals = Array.isArray(prev) ? [...prev] : [];
+      if (mealIndex < meals.length) {
+        meals[mealIndex] = {
+          ...meals[mealIndex],
+          side_dishes: (meals[mealIndex].side_dishes || []).map(sd =>
+            sd.recipe_id === sideRecipeId ? { ...sd, portions: Math.max(1, parseInt(val) || 1) } : sd
+          )
+        };
+      }
+      return meals;
+    });
+  };
+
+  const removeMealSideDish = (dateStr, mealType, mealIndex, sideRecipeId) => {
+    updateDays(dateStr, mealType, prev => {
+      const meals = Array.isArray(prev) ? [...prev] : [];
+      if (mealIndex < meals.length) {
+        meals[mealIndex] = {
+          ...meals[mealIndex],
+          side_dishes: (meals[mealIndex].side_dishes || []).filter(sd => sd.recipe_id !== sideRecipeId)
+        };
+      }
+      return meals;
+    });
   };
 
   // ── Shared move/swap logic ──
   const performMoveOrSwap = (srcDate, srcMeal, targetDate, targetMeal) => {
     if (srcDate === targetDate && srcMeal === targetMeal) return;
-    const srcSlot = getMealForSlot(srcDate, srcMeal);
-    const targetSlot = getMealForSlot(targetDate, targetMeal);
+    const srcSlot = getMealsForSlot(srcDate, srcMeal);
+    const targetSlot = getMealsForSlot(targetDate, targetMeal);
     setMealPlan(prev => ({
       ...prev,
       days: prev.days.map(day => {
@@ -675,7 +709,7 @@ const MealPlanner = () => {
         return day;
       })
     }));
-    toast.success(targetSlot ? "Gerichte getauscht" : "Gericht verschoben");
+    toast.success(targetSlot.length > 0 ? "Gerichte getauscht" : "Gerichte verschoben");
   };
 
   // ── Desktop Drag & Drop ──
@@ -731,8 +765,8 @@ const MealPlanner = () => {
         setMoveSource(null);
       }
     } else {
-      const meal = getMealForSlot(dateStr, mealType);
-      if (meal) {
+      const meals = getMealsForSlot(dateStr, mealType);
+      if (meals.length > 0) {
         // Open detail overlay for filled slots
         setDetailSlot({ dateStr, mealType });
       } else {
@@ -831,7 +865,7 @@ const MealPlanner = () => {
             <div className="flex items-center gap-2">
               <GripVertical className="w-4 h-4 text-emerald-600" />
               <span className="text-sm font-medium text-emerald-700">
-                {getMealForSlot(moveSource.dateStr, moveSource.mealType)?.recipe_name} verschieben — Ziel-Slot antippen
+                {getMealsForSlot(moveSource.dateStr, moveSource.mealType).map(m => m.recipe_name).join(", ")} verschieben — Ziel-Slot antippen
               </span>
             </div>
             <Button
@@ -884,17 +918,19 @@ const MealPlanner = () => {
                   <span className="font-medium text-sm">{label}</span>
                 </div>
                 {days.map(({ dateStr }) => {
-                  const meal = getMealForSlot(dateStr, key);
-                  const isMoveSource = moveSource?.dateStr === dateStr && moveSource?.mealType === key;
+                  const meals = getMealsForSlot(dateStr, key);
+                  const totalPortions = getTotalPortions(dateStr, key);
+                  const isMvSrc = moveSource?.dateStr === dateStr && moveSource?.mealType === key;
                   return (
                     <SlotCell
                       key={`${dateStr}-${key}`}
-                      meal={meal}
+                      meals={meals}
+                      totalPortions={totalPortions}
                       dateStr={dateStr}
                       mealKey={key}
                       onOpen={() => handleSlotClick(dateStr, key)}
                       isDragOver={dragOverTarget === `${dateStr}-${key}`}
-                      isMoveSource={isMoveSource}
+                      isMoveSource={isMvSrc}
                       isMoving={!!moveSource}
                       onMoveStart={() => handleMoveStart(dateStr, key)}
                       onDragStart={e => handleDragStart(e, dateStr, key)}
@@ -914,21 +950,29 @@ const MealPlanner = () => {
           <SlotDetailDialog
             open={!!detailSlot}
             onClose={() => setDetailSlot(null)}
-            meal={detailSlot ? getMealForSlot(detailSlot.dateStr, detailSlot.mealType) : null}
+            meals={detailSlot ? getMealsForSlot(detailSlot.dateStr, detailSlot.mealType) : []}
             dateStr={detailSlot?.dateStr}
             mealType={detailSlot?.mealType}
-            onEdit={() => {
-              setSelectedSlot(detailSlot);
+            onAddMeal={() => {
+              setSelectedSlot({ dateStr: detailSlot.dateStr, mealType: detailSlot.mealType, editIndex: null });
               setDialogOpen(true);
               setDetailSlot(null);
             }}
-            onClear={() => {
+            onEditMeal={(index) => {
+              setSelectedSlot({ dateStr: detailSlot.dateStr, mealType: detailSlot.mealType, editIndex: index });
+              setDialogOpen(true);
+              setDetailSlot(null);
+            }}
+            onRemoveMeal={(index) => {
+              removeMealFromSlot(detailSlot.dateStr, detailSlot.mealType, index);
+            }}
+            onClearAll={() => {
               clearSlot(detailSlot.dateStr, detailSlot.mealType);
               setDetailSlot(null);
             }}
-            onUpdatePortions={val => updateMainPortions(detailSlot.dateStr, detailSlot.mealType, val)}
-            onUpdateSidePortions={(rid, val) => updateSidePortions(detailSlot.dateStr, detailSlot.mealType, rid, val)}
-            onRemoveSide={rid => removeSideDish(detailSlot.dateStr, detailSlot.mealType, rid)}
+            onUpdatePortions={(index, val) => updateMealPortions(detailSlot.dateStr, detailSlot.mealType, index, val)}
+            onUpdateSidePortions={(mealIdx, rid, val) => updateMealSidePortions(detailSlot.dateStr, detailSlot.mealType, mealIdx, rid, val)}
+            onRemoveSide={(mealIdx, rid) => removeMealSideDish(detailSlot.dateStr, detailSlot.mealType, mealIdx, rid)}
             recipes={recipes}
           />
         )}
@@ -938,8 +982,11 @@ const MealPlanner = () => {
           open={dialogOpen}
           onClose={() => { setDialogOpen(false); setSelectedSlot(null); }}
           onConfirm={handleConfirmSlot}
-          initialSlot={selectedSlot ? getMealForSlot(selectedSlot.dateStr, selectedSlot.mealType) : null}
+          initialSlot={selectedSlot?.editIndex !== null && selectedSlot?.editIndex !== undefined
+            ? getMealsForSlot(selectedSlot.dateStr, selectedSlot.mealType)[selectedSlot.editIndex] || null
+            : null}
           recipes={recipes}
+          groupMembers={groupMembers}
         />
       </div>
     </Layout>
