@@ -377,7 +377,7 @@ const SlotCell = ({ meal, onOpen, dateStr, mealKey, onDragStart, onDragOver, onD
 
   return (
     <Card
-      className={`p-2 min-h-[56px] flex items-center gap-1.5 transition-all cursor-pointer ${
+      className={`p-2 min-h-[56px] flex items-center justify-center gap-2 transition-all cursor-pointer ${
         isMoveSource
           ? "border-emerald-500 ring-2 ring-emerald-300 bg-emerald-50"
           : isDragOver || (isMoving && !isMoveSource)
@@ -394,20 +394,17 @@ const SlotCell = ({ meal, onOpen, dateStr, mealKey, onDragStart, onDragOver, onD
     >
       <button
         onClick={(e) => { e.stopPropagation(); onMoveStart(); }}
-        className={`p-0.5 rounded flex-shrink-0 transition-colors ${
+        className={`p-1 rounded flex-shrink-0 transition-colors ${
           isMoveSource
             ? "bg-emerald-200 text-emerald-700"
-            : "text-gray-300 hover:text-gray-500 hover:bg-gray-100 cursor-grab active:cursor-grabbing"
+            : "text-gray-400 hover:text-gray-600 hover:bg-gray-100 cursor-grab active:cursor-grabbing"
         }`}
         data-testid={`move-grip-${dateStr}-${mealKey}`}
         title={isMoveSource ? "Abbrechen" : "Verschieben"}
       >
-        <GripVertical className="w-3.5 h-3.5" />
+        <GripVertical className="w-5 h-5" />
       </button>
-      <span className="text-xs font-medium text-[var(--text-primary)] truncate flex-1 min-w-0">
-        {meal.recipe_name}
-      </span>
-      <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0" data-testid={`portions-badge-${dateStr}-${mealKey}`}>
+      <span className="text-sm font-bold text-emerald-700 flex-shrink-0" data-testid={`portions-badge-${dateStr}-${mealKey}`}>
         {meal.portions || 2}
       </span>
     </Card>
