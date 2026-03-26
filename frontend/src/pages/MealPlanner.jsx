@@ -348,12 +348,12 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes }) =>
   );
 };
 
-// ─── Slot Cell ────────────────────────────────────────────────────────────────
-const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortions, onRemoveSide, dateStr, mealKey, onDragStart, onDragOver, onDrop, onDragLeave, isDragOver, isMoveSource, isMoving, onMoveStart }) => {
+// ─── Slot Cell (Compact) ──────────────────────────────────────────────────────
+const SlotCell = ({ meal, onOpen, dateStr, mealKey, onDragStart, onDragOver, onDrop, onDragLeave, isDragOver, isMoveSource, isMoving, onMoveStart }) => {
   if (!meal) {
     return (
       <Card
-        className={`p-3 min-h-[100px] flex flex-col transition-all cursor-pointer border-dashed bg-[var(--bg-subtle)] ${
+        className={`p-2 min-h-[56px] flex flex-col transition-all cursor-pointer border-dashed bg-[var(--bg-subtle)] ${
           isDragOver || (isMoving && !isMoveSource)
             ? "border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200"
             : "hover:border-emerald-200 border-gray-200"
@@ -368,7 +368,7 @@ const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortion
           {isMoving && !isMoveSource ? (
             <span className="text-xs text-emerald-500 font-medium">Hierher</span>
           ) : (
-            <Plus className={`w-5 h-5 ${isDragOver ? "text-emerald-500" : "text-[var(--text-muted)]"}`} />
+            <Plus className={`w-4 h-4 ${isDragOver ? "text-emerald-500" : "text-[var(--text-muted)]"}`} />
           )}
         </div>
       </Card>
@@ -377,89 +377,182 @@ const SlotCell = ({ meal, onOpen, onClear, onUpdatePortions, onUpdateSidePortion
 
   return (
     <Card
-      className={`p-3 min-h-[100px] flex flex-col transition-all ${
+      className={`p-2 min-h-[56px] flex items-center gap-1.5 transition-all cursor-pointer ${
         isMoveSource
           ? "border-emerald-500 ring-2 ring-emerald-300 bg-emerald-50"
           : isDragOver || (isMoving && !isMoveSource)
             ? "border-emerald-400 ring-2 ring-emerald-200"
-            : "bg-white border-gray-100"
+            : "bg-white border-gray-100 hover:border-emerald-200"
       }`}
       draggable
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragLeave={onDragLeave}
+      onClick={onOpen}
       data-testid={`meal-slot-${dateStr}-${mealKey}`}
     >
-      {/* Main recipe */}
-      <div className="flex justify-between items-start gap-1 mb-2">
-        <div className="flex items-center gap-1 flex-1 min-w-0">
-          <button
-            onClick={(e) => { e.stopPropagation(); onMoveStart(); }}
-            className={`p-0.5 rounded flex-shrink-0 transition-colors ${
-              isMoveSource
-                ? "bg-emerald-200 text-emerald-700"
-                : "text-gray-300 hover:text-gray-500 hover:bg-gray-100 cursor-grab active:cursor-grabbing"
-            }`}
-            data-testid={`move-grip-${dateStr}-${mealKey}`}
-            title={isMoveSource ? "Abbrechen" : "Verschieben"}
-          >
-            <GripVertical className="w-3.5 h-3.5" />
-          </button>
-          <button
-            className="font-medium text-xs text-[var(--text-primary)] line-clamp-2 flex-1 text-left hover:text-emerald-700 transition-colors"
-            onClick={onOpen}
-          >
-            {meal.recipe_name}
-          </button>
-        </div>
-        <button
-          onClick={onClear}
-          className="p-0.5 hover:bg-red-50 rounded text-red-400 hover:text-red-600 flex-shrink-0"
-          data-testid={`clear-slot-${dateStr}-${mealKey}`}
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {/* Main portions */}
-      <div className="flex items-center gap-1 mb-2">
-        <span className="text-[10px] text-[var(--text-muted)]">Portionen:</span>
-        <Input
-          type="number"
-          min="1"
-          value={meal.portions || 2}
-          onChange={e => onUpdatePortions(e.target.value)}
-          onClick={e => e.stopPropagation()}
-          className="w-12 h-5 text-xs p-1"
-        />
-      </div>
-
-      {/* Side dishes */}
-      {meal.side_dishes?.length > 0 && (
-        <div className="space-y-1 border-t border-gray-100 pt-2">
-          {meal.side_dishes.map((sd, idx) => (
-            <div key={`${sd.recipe_id}-${idx}`} className="flex items-center gap-1 group">
-              <span className="text-[10px] text-emerald-700 flex-1 truncate">↳ {sd.recipe_name}</span>
-              <Input
-                type="number"
-                min="1"
-                value={sd.portions || 2}
-                onChange={e => onUpdateSidePortions(sd.recipe_id, e.target.value)}
-                onClick={e => e.stopPropagation()}
-                className="w-10 h-5 text-[10px] p-1 flex-shrink-0"
-              />
-              <button
-                onClick={() => onRemoveSide(sd.recipe_id)}
-                className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-50 rounded text-red-300 hover:text-red-500 transition-all"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <button
+        onClick={(e) => { e.stopPropagation(); onMoveStart(); }}
+        className={`p-0.5 rounded flex-shrink-0 transition-colors ${
+          isMoveSource
+            ? "bg-emerald-200 text-emerald-700"
+            : "text-gray-300 hover:text-gray-500 hover:bg-gray-100 cursor-grab active:cursor-grabbing"
+        }`}
+        data-testid={`move-grip-${dateStr}-${mealKey}`}
+        title={isMoveSource ? "Abbrechen" : "Verschieben"}
+      >
+        <GripVertical className="w-3.5 h-3.5" />
+      </button>
+      <span className="text-xs font-medium text-[var(--text-primary)] truncate flex-1 min-w-0">
+        {meal.recipe_name}
+      </span>
+      <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0" data-testid={`portions-badge-${dateStr}-${mealKey}`}>
+        {meal.portions || 2}
+      </span>
     </Card>
+  );
+};
+
+// ─── Slot Detail Dialog (Overlay) ─────────────────────────────────────────────
+const SlotDetailDialog = ({ open, onClose, meal, dateStr, mealType, onEdit, onClear, onUpdatePortions, onUpdateSidePortions, onRemoveSide, recipes }) => {
+  if (!meal) return null;
+
+  const mealLabels = { breakfast: "Frühstück", lunch: "Mittagessen", dinner: "Abendessen" };
+  const dateLabel = dateStr ? format(new Date(dateStr), "EEEE, d. MMMM", { locale: de }) : "";
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-heading text-lg">{mealLabels[mealType] || ""}</DialogTitle>
+          <p className="text-sm text-[var(--text-muted)]">{dateLabel}</p>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Main recipe */}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+            <div className="flex items-center gap-3 mb-3">
+              {(() => {
+                const r = recipes?.find(r => r.recipe_id === meal.recipe_id);
+                return r?.image_url ? (
+                  <img src={r.image_url} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                    <ChefHat className="w-6 h-6 text-emerald-400" />
+                  </div>
+                );
+              })()}
+              <div className="flex-1 min-w-0">
+                <Link to={`/recipes/${meal.recipe_id}`} className="font-semibold text-[var(--text-primary)] hover:text-emerald-700 transition-colors truncate block">
+                  {meal.recipe_name}
+                </Link>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-[var(--text-primary)] whitespace-nowrap">Portionen:</label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onUpdatePortions(Math.max(1, (meal.portions || 2) - 1))}
+                  className="w-7 h-7 rounded-lg bg-white border border-emerald-200 flex items-center justify-center hover:bg-emerald-100 transition-colors"
+                >
+                  <Minus className="w-3 h-3" />
+                </button>
+                <Input
+                  type="number"
+                  min="1"
+                  value={meal.portions || 2}
+                  onChange={e => onUpdatePortions(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-16 h-8 text-center text-sm font-semibold"
+                  data-testid="detail-main-portions"
+                />
+                <button
+                  type="button"
+                  onClick={() => onUpdatePortions((meal.portions || 2) + 1)}
+                  className="w-7 h-7 rounded-lg bg-white border border-emerald-200 flex items-center justify-center hover:bg-emerald-100 transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Side dishes */}
+          {meal.side_dishes?.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">
+                Beilagen ({meal.side_dishes.length})
+              </h3>
+              <div className="space-y-2">
+                {meal.side_dishes.map((sd, idx) => (
+                  <div key={`${sd.recipe_id}-${idx}`} className="flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                    {(() => {
+                      const r = recipes?.find(r => r.recipe_id === sd.recipe_id);
+                      return r?.image_url ? (
+                        <img src={r.image_url} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0">
+                          <ChefHat className="w-4 h-4 text-gray-400" />
+                        </div>
+                      );
+                    })()}
+                    <span className="flex-1 text-sm font-medium text-[var(--text-primary)] truncate min-w-0">
+                      {sd.recipe_name}
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onUpdateSidePortions(sd.recipe_id, Math.max(1, (sd.portions || 2) - 1))}
+                        className="w-6 h-6 rounded-md bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100"
+                      >
+                        <Minus className="w-3 h-3" />
+                      </button>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={sd.portions || 2}
+                        onChange={e => onUpdateSidePortions(sd.recipe_id, Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-14 h-7 text-center text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => onUpdateSidePortions(sd.recipe_id, (sd.portions || 2) + 1)}
+                        className="w-6 h-6 rounded-md bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveSide(sd.recipe_id)}
+                        className="w-6 h-6 rounded-md hover:bg-red-50 flex items-center justify-center text-gray-400 hover:text-red-500 ml-1"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex gap-2 pt-2">
+            <Button onClick={onEdit} className="btn-primary flex-1" data-testid="detail-edit-btn">
+              Bearbeiten
+            </Button>
+            <Button
+              variant="outline"
+              onClick={onClear}
+              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              data-testid="detail-clear-btn"
+            >
+              <X className="w-4 h-4" /> Entfernen
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -474,6 +567,7 @@ const MealPlanner = () => {
   const [saving, setSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [detailSlot, setDetailSlot] = useState(null); // For detail overlay
   const [dragSource, setDragSource] = useState(null);
   const [dragOverTarget, setDragOverTarget] = useState(null);
   const [moveSource, setMoveSource] = useState(null); // Mobile tap-to-move
@@ -640,7 +734,14 @@ const MealPlanner = () => {
         setMoveSource(null);
       }
     } else {
-      openSlotDialog(dateStr, mealType);
+      const meal = getMealForSlot(dateStr, mealType);
+      if (meal) {
+        // Open detail overlay for filled slots
+        setDetailSlot({ dateStr, mealType });
+      } else {
+        // Open recipe picker for empty slots
+        openSlotDialog(dateStr, mealType);
+      }
     }
   };
 
@@ -795,10 +896,6 @@ const MealPlanner = () => {
                       dateStr={dateStr}
                       mealKey={key}
                       onOpen={() => handleSlotClick(dateStr, key)}
-                      onClear={() => clearSlot(dateStr, key)}
-                      onUpdatePortions={val => updateMainPortions(dateStr, key, val)}
-                      onUpdateSidePortions={(rid, val) => updateSidePortions(dateStr, key, rid, val)}
-                      onRemoveSide={rid => removeSideDish(dateStr, key, rid)}
                       isDragOver={dragOverTarget === `${dateStr}-${key}`}
                       isMoveSource={isMoveSource}
                       isMoving={!!moveSource}
@@ -814,6 +911,30 @@ const MealPlanner = () => {
             ))}
           </div>
         </div>
+
+        {/* Slot Detail Dialog (Overlay) */}
+        {detailSlot && (
+          <SlotDetailDialog
+            open={!!detailSlot}
+            onClose={() => setDetailSlot(null)}
+            meal={detailSlot ? getMealForSlot(detailSlot.dateStr, detailSlot.mealType) : null}
+            dateStr={detailSlot?.dateStr}
+            mealType={detailSlot?.mealType}
+            onEdit={() => {
+              setSelectedSlot(detailSlot);
+              setDialogOpen(true);
+              setDetailSlot(null);
+            }}
+            onClear={() => {
+              clearSlot(detailSlot.dateStr, detailSlot.mealType);
+              setDetailSlot(null);
+            }}
+            onUpdatePortions={val => updateMainPortions(detailSlot.dateStr, detailSlot.mealType, val)}
+            onUpdateSidePortions={(rid, val) => updateSidePortions(detailSlot.dateStr, detailSlot.mealType, rid, val)}
+            onRemoveSide={rid => removeSideDish(detailSlot.dateStr, detailSlot.mealType, rid)}
+            recipes={recipes}
+          />
+        )}
 
         {/* Slot Configuration Dialog */}
         <SlotConfigDialog

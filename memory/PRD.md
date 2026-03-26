@@ -96,7 +96,9 @@
   - Automatischer Bild-Import von externen URLs beim Rezept-Import
   - Galerie-Navigation mit Thumbnails, Delete-Button
   - Object Storage via Emergent Integration
-- [x] Auto-Fokus auf neues Zutaten-Feld beim Klick auf "Zutat hinzufügen"
+- [x] Kompakte Speiseplan-Slots mit Detail-Overlay (25.03.2026)
+  - Slots zeigen nur Rezeptname, Portionszahl-Badge und Drag-Handle
+  - Klick öffnet Detail-Overlay mit Portionssteuerung, Beilagen, Bearbeiten/Entfernen
 
 ## Prioritized Backlog
 
