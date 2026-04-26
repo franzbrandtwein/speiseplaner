@@ -537,47 +537,49 @@ const RecipeForm = () => {
             
             <div className="space-y-3">
               {formData.ingredients.map((ing, idx) => (
-                <div key={idx} className="flex gap-2 items-start">
+                <div key={idx} className="flex flex-wrap gap-2 items-start">
                   <Input
                     value={ing.name}
                     onChange={e => updateIngredient(idx, "name", e.target.value)}
                     placeholder="Zutat"
-                    className="flex-1 input-field"
+                    className="w-full sm:flex-1 sm:w-auto input-field text-base"
                     data-testid={`ingredient-name-${idx}`}
                   />
-                  <Input
-                    value={ing.amount}
-                    onChange={e => updateIngredient(idx, "amount", e.target.value)}
-                    placeholder="Menge"
-                    className="w-24 input-field"
-                    data-testid={`ingredient-amount-${idx}`}
-                  />
-                  <Select value={ing.unit} onValueChange={v => updateIngredient(idx, "unit", v)}>
-                    <SelectTrigger className="w-20" data-testid={`ingredient-unit-${idx}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="g">g</SelectItem>
-                      <SelectItem value="kg">kg</SelectItem>
-                      <SelectItem value="ml">ml</SelectItem>
-                      <SelectItem value="l">l</SelectItem>
-                      <SelectItem value="Stk">Stk</SelectItem>
-                      <SelectItem value="EL">EL</SelectItem>
-                      <SelectItem value="TL">TL</SelectItem>
-                      <SelectItem value="Prise">Prise</SelectItem>
-                      <SelectItem value="Bund">Bund</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeIngredient(idx)}
-                    disabled={formData.ingredients.length === 1}
-                    className="text-red-500 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <div className="flex gap-2 items-start flex-1 sm:flex-none">
+                    <Input
+                      value={ing.amount}
+                      onChange={e => updateIngredient(idx, "amount", e.target.value)}
+                      placeholder="Menge"
+                      className="w-20 sm:w-24 input-field"
+                      data-testid={`ingredient-amount-${idx}`}
+                    />
+                    <Select value={ing.unit} onValueChange={v => updateIngredient(idx, "unit", v)}>
+                      <SelectTrigger className="w-20" data-testid={`ingredient-unit-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="g">g</SelectItem>
+                        <SelectItem value="kg">kg</SelectItem>
+                        <SelectItem value="ml">ml</SelectItem>
+                        <SelectItem value="l">l</SelectItem>
+                        <SelectItem value="Stk">Stk</SelectItem>
+                        <SelectItem value="EL">EL</SelectItem>
+                        <SelectItem value="TL">TL</SelectItem>
+                        <SelectItem value="Prise">Prise</SelectItem>
+                        <SelectItem value="Bund">Bund</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeIngredient(idx)}
+                      disabled={formData.ingredients.length === 1}
+                      className="text-red-500 hover:bg-red-50 flex-shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
