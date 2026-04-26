@@ -9,7 +9,7 @@ import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { 
   ChefHat, Clock, Users, Star, ArrowLeft, Edit, Trash2, 
-  AlertTriangle, DollarSign, Flame, UtensilsCrossed, Upload, X, ChevronLeft, ChevronRight
+  AlertTriangle, DollarSign, Flame, UtensilsCrossed, Upload, X, ChevronLeft, ChevronRight, Printer
 } from "lucide-react";
 import {
   AlertDialog,
@@ -286,14 +286,20 @@ const RecipeDetail = () => {
                 )}
               </div>
 
-              {/* Owner Actions */}
-              {isOwner && (
-                <div className="flex gap-3 mt-6">
-                  <Link to={`/recipes/${id}/edit`}>
-                    <Button className="btn-secondary" data-testid="edit-recipe-button">
-                      <Edit className="w-4 h-4" /> Bearbeiten
-                    </Button>
-                  </Link>
+              {/* Actions */}
+              <div className="flex gap-3 mt-6 flex-wrap">
+                <Link to={`/recipes/${id}/print`}>
+                  <Button variant="outline" className="btn-secondary" data-testid="print-recipe-button">
+                    <Printer className="w-4 h-4" /> Drucken
+                  </Button>
+                </Link>
+                {isOwner && (
+                  <>
+                    <Link to={`/recipes/${id}/edit`}>
+                      <Button className="btn-secondary" data-testid="edit-recipe-button">
+                        <Edit className="w-4 h-4" /> Bearbeiten
+                      </Button>
+                    </Link>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="destructive" data-testid="delete-recipe-button">
@@ -315,8 +321,9 @@ const RecipeDetail = () => {
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
-                </div>
-              )}
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Instructions */}

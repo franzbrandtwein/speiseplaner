@@ -17,6 +17,8 @@ import GroupPage from "./pages/GroupPage";
 import InvitePage from "./pages/InvitePage";
 import NotificationSettings from "./pages/NotificationSettings";
 import StapleItems from "./pages/StapleItems";
+import RecipePrint from "./pages/RecipePrint";
+import NutritionTracking from "./pages/NutritionTracking";
 
 // Smart backend URL: adapts to reverse proxy setups
 // When accessed via a different hostname (reverse proxy), use the current origin
@@ -242,6 +244,22 @@ function AppRouter() {
         }
       />
       <Route path="/invite/:token" element={<InvitePage />} />
+      <Route
+        path="/recipes/:id/print"
+        element={
+          <ProtectedRoute>
+            <RecipePrint />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/nutrition"
+        element={
+          <ProtectedRoute>
+            <NutritionTracking />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 }

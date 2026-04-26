@@ -1440,7 +1440,238 @@ async def save_meal_plan(plan_data: MealPlanUpdate, request: Request, user: User
     msg = "Speiseplan aktualisiert" if existing else "Speiseplan erstellt"
     return {"message": msg, "plan_id": plan_id}
 
-# ============ SHOPPING LIST ENDPOINTS ============
+# ============ MEAL PLAN TEMPLATES ============
+
+class TemplateCreate(BaseModel):
+    name: str
+    week_start: str  # copy from this week
+
+@api_router.get("/mealplan-templates")
+async def list_templates(user: User = Depends(get_current_user)):
+    """List all meal plan templates for the user/group"""
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+    query = {"group_id": group_id} if group_id else {"user_id": user.user_id, "group_id": None}
+    templates = await db.meal_plan_templates.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return templates
+
+@api_router.post("/mealplan-templates")
+async def save_template(data: TemplateCreate, user: User = Depends(get_current_user)):
+    """Save current week's meal plan as a reusable template"""
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+    
+    if group_id:
+        plan = await db.meal_plans.find_one({"group_id": group_id, "week_start": data.week_start}, {"_id": 0})
+    else:
+        plan = await db.meal_plans.find_one({"user_id": user.user_id, "group_id": None, "week_start": data.week_start}, {"_id": 0})
+    
+    if not plan or not plan.get("days"):
+        raise HTTPException(status_code=400, detail="Kein Speiseplan für diese Woche vorhanden")
+    
+    # Strip dates from days, keep only meals
+    template_days = []
+    for i, day in enumerate(plan["days"]):
+        template_days.append({
+            "day_index": i,
+            "breakfast": day.get("breakfast", []),
+            "lunch": day.get("lunch", []),
+            "dinner": day.get("dinner", [])
+        })
+    
+    template_id = f"tmpl_{uuid.uuid4().hex[:12]}"
+    template = {
+        "template_id": template_id,
+        "user_id": user.user_id,
+        "group_id": group_id,
+        "name": data.name,
+        "days": template_days,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.meal_plan_templates.insert_one(template)
+    return {"template_id": template_id, "message": "Vorlage gespeichert"}
+
+@api_router.post("/mealplan-templates/{template_id}/apply")
+async def apply_template(template_id: str, week_start: str, user: User = Depends(get_current_user)):
+    """Apply a template to a specific week"""
+    template = await db.meal_plan_templates.find_one({"template_id": template_id}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Vorlage nicht gefunden")
+    
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+    start_date = datetime.fromisoformat(week_start)
+    
+    days = []
+    for td in template["days"]:
+        day_date = start_date + timedelta(days=td["day_index"])
+        days.append({
+            "date": day_date.strftime("%Y-%m-%d"),
+            "breakfast": td.get("breakfast", []),
+            "lunch": td.get("lunch", []),
+            "dinner": td.get("dinner", [])
+        })
+    
+    query = {"group_id": group_id, "week_start": week_start} if group_id else {"user_id": user.user_id, "group_id": None, "week_start": week_start}
+    existing = await db.meal_plans.find_one(query, {"_id": 0})
+    
+    if existing:
+        await db.meal_plans.update_one(
+            {"plan_id": existing["plan_id"]},
+            {"$set": {"days": days, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    else:
+        plan = MealPlan(user_id=user.user_id, group_id=group_id, week_start=week_start, days=[DayPlan(**d) for d in days])
+        plan_doc = plan.model_dump()
+        plan_doc['created_at'] = plan_doc['created_at'].isoformat()
+        plan_doc['updated_at'] = plan_doc['updated_at'].isoformat()
+        await db.meal_plans.insert_one(plan_doc)
+    
+    return {"message": "Vorlage angewendet"}
+
+@api_router.delete("/mealplan-templates/{template_id}")
+async def delete_template(template_id: str, user: User = Depends(get_current_user)):
+    result = await db.meal_plan_templates.delete_one({"template_id": template_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Vorlage nicht gefunden")
+    return {"message": "Vorlage gelöscht"}
+
+@api_router.post("/mealplans/copy")
+async def copy_week(source_week: str, target_week: str, user: User = Depends(get_current_user)):
+    """Copy a meal plan from one week to another"""
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+    
+    query = {"group_id": group_id, "week_start": source_week} if group_id else {"user_id": user.user_id, "group_id": None, "week_start": source_week}
+    source = await db.meal_plans.find_one(query, {"_id": 0})
+    if not source or not source.get("days"):
+        raise HTTPException(status_code=400, detail="Kein Speiseplan in der Quellwoche")
+    
+    start_date = datetime.fromisoformat(target_week)
+    days = []
+    for i, day in enumerate(source["days"]):
+        day_date = start_date + timedelta(days=i)
+        days.append({
+            "date": day_date.strftime("%Y-%m-%d"),
+            "breakfast": day.get("breakfast", []),
+            "lunch": day.get("lunch", []),
+            "dinner": day.get("dinner", [])
+        })
+    
+    target_query = {"group_id": group_id, "week_start": target_week} if group_id else {"user_id": user.user_id, "group_id": None, "week_start": target_week}
+    existing = await db.meal_plans.find_one(target_query, {"_id": 0})
+    
+    if existing:
+        await db.meal_plans.update_one(
+            {"plan_id": existing["plan_id"]},
+            {"$set": {"days": days, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    else:
+        plan = MealPlan(user_id=user.user_id, group_id=group_id, week_start=target_week, days=[DayPlan(**d) for d in days])
+        plan_doc = plan.model_dump()
+        plan_doc['created_at'] = plan_doc['created_at'].isoformat()
+        plan_doc['updated_at'] = plan_doc['updated_at'].isoformat()
+        await db.meal_plans.insert_one(plan_doc)
+    
+    return {"message": "Wochenplan kopiert"}
+
+# ============ NUTRITION TRACKING ============
+
+@api_router.get("/nutrition/daily")
+async def get_daily_nutrition(date: str, user: User = Depends(get_current_user)):
+    """Calculate nutrition summary for a given date from meal plan"""
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+    
+    # Find the week start for the given date
+    dt = datetime.fromisoformat(date)
+    week_start = (dt - timedelta(days=dt.weekday())).strftime("%Y-%m-%d")
+    
+    query = {"group_id": group_id, "week_start": week_start} if group_id else {"user_id": user.user_id, "group_id": None, "week_start": week_start}
+    plan = await db.meal_plans.find_one(query, {"_id": 0})
+    
+    if not plan:
+        return {"date": date, "meals": [], "totals": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0}}
+    
+    day = next((d for d in plan.get("days", []) if d.get("date") == date), None)
+    if not day:
+        return {"date": date, "meals": [], "totals": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0}}
+    
+    # Collect all recipe IDs
+    recipe_ids = set()
+    for mt in ["breakfast", "lunch", "dinner"]:
+        meals = day.get(mt, [])
+        if isinstance(meals, dict):
+            meals = [meals] if meals.get("recipe_id") else []
+        for m in meals:
+            if m.get("recipe_id"):
+                recipe_ids.add(m["recipe_id"])
+                for sd in m.get("side_dishes", []):
+                    if sd.get("recipe_id"):
+                        recipe_ids.add(sd["recipe_id"])
+    
+    # Load recipes with nutrition
+    recipes_map = {}
+    if recipe_ids:
+        recipes = await db.recipes.find({"recipe_id": {"$in": list(recipe_ids)}}, {"_id": 0}).to_list(100)
+        recipes_map = {r["recipe_id"]: r for r in recipes}
+    
+    totals = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0}
+    meal_details = []
+    
+    for mt in ["breakfast", "lunch", "dinner"]:
+        meals = day.get(mt, [])
+        if isinstance(meals, dict):
+            meals = [meals] if meals.get("recipe_id") else []
+        for m in meals:
+            if not m.get("recipe_id"):
+                continue
+            recipe = recipes_map.get(m["recipe_id"], {})
+            nutr = recipe.get("nutrition") or {}
+            recipe_portions = recipe.get("portions", 1) or 1
+            meal_portions = m.get("portions", 2)
+            factor = meal_portions / recipe_portions
+            
+            entry = {
+                "meal_type": mt,
+                "recipe_name": m.get("recipe_name", ""),
+                "portions": meal_portions,
+                "calories": round((nutr.get("calories") or 0) * factor),
+                "protein": round((nutr.get("protein") or 0) * factor, 1),
+                "carbs": round((nutr.get("carbs") or 0) * factor, 1),
+                "fat": round((nutr.get("fat") or 0) * factor, 1),
+                "fiber": round((nutr.get("fiber") or 0) * factor, 1),
+            }
+            meal_details.append(entry)
+            for k in totals:
+                totals[k] += entry[k]
+            
+            # Side dishes
+            for sd in m.get("side_dishes", []):
+                if not sd.get("recipe_id"):
+                    continue
+                sd_recipe = recipes_map.get(sd["recipe_id"], {})
+                sd_nutr = sd_recipe.get("nutrition") or {}
+                sd_base = sd_recipe.get("portions", 1) or 1
+                sd_factor = sd.get("portions", 2) / sd_base
+                sd_entry = {
+                    "meal_type": mt,
+                    "recipe_name": sd.get("recipe_name", ""),
+                    "portions": sd.get("portions", 2),
+                    "calories": round((sd_nutr.get("calories") or 0) * sd_factor),
+                    "protein": round((sd_nutr.get("protein") or 0) * sd_factor, 1),
+                    "carbs": round((sd_nutr.get("carbs") or 0) * sd_factor, 1),
+                    "fat": round((sd_nutr.get("fat") or 0) * sd_factor, 1),
+                    "fiber": round((sd_nutr.get("fiber") or 0) * sd_factor, 1),
+                }
+                meal_details.append(sd_entry)
+                for k in totals:
+                    totals[k] += sd_entry[k]
+    
+    # Round totals
+    totals = {k: round(v, 1) for k, v in totals.items()}
+    
+    return {"date": date, "meals": meal_details, "totals": totals}
 
 @api_router.get("/shopping-list")
 async def get_shopping_list(week_start: str, user: User = Depends(get_current_user)):

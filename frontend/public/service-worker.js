@@ -4,10 +4,11 @@
 //  - API calls (/api/*) → Network First with Cache Fallback
 //  - Images → Cache First with Network Fallback
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const APP_SHELL_CACHE = `speisenplaner-shell-${CACHE_VERSION}`;
 const API_CACHE = `speisenplaner-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `speisenplaner-images-${CACHE_VERSION}`;
+const SYNC_STORE = 'speisenplaner-offline-queue';
 
 // Resources to pre-cache (app shell)
 const APP_SHELL_URLS = [
@@ -72,8 +73,22 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests
-  if (request.method !== 'GET') return;
+  // Skip non-GET requests — but queue POST/PUT/DELETE for background sync if offline
+  if (request.method !== 'GET') {
+    if (url.pathname.startsWith('/api/')) {
+      event.respondWith(
+        fetch(request.clone()).catch(async () => {
+          // Queue for background sync
+          await queueOfflineAction(request);
+          return new Response(
+            JSON.stringify({ queued: true, message: 'Aktion wird bei Verbindung ausgeführt' }),
+            { status: 202, headers: { 'Content-Type': 'application/json' } }
+          );
+        })
+      );
+    }
+    return;
+  }
 
   // Skip chrome-extension and non-http(s)
   if (!url.protocol.startsWith('http')) return;
@@ -250,3 +265,97 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 console.log('[SW] Speisenplaner Service Worker loaded');
+
+// ============================================================
+// BACKGROUND SYNC: Queue offline mutations
+// ============================================================
+async function openSyncDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(SYNC_STORE, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('queue')) {
+        db.createObjectStore('queue', { autoIncrement: true });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function queueOfflineAction(request) {
+  try {
+    const body = await request.clone().text();
+    const entry = {
+      url: request.url,
+      method: request.method,
+      headers: Object.fromEntries(request.headers.entries()),
+      body,
+      timestamp: Date.now()
+    };
+    const db = await openSyncDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('queue', 'readwrite');
+      tx.objectStore('queue').add(entry);
+      tx.oncomplete = () => {
+        console.log('[SW] Queued offline action:', request.method, request.url);
+        // Register for background sync
+        if (self.registration.sync) {
+          self.registration.sync.register('sync-offline-actions');
+        }
+        resolve();
+      };
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn('[SW] Failed to queue offline action:', e);
+  }
+}
+
+async function replayOfflineActions() {
+  try {
+    const db = await openSyncDB();
+    const tx = db.transaction('queue', 'readonly');
+    const store = tx.objectStore('queue');
+    const entries = await new Promise((resolve, reject) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+
+    if (entries.length === 0) return;
+    console.log(`[SW] Replaying ${entries.length} offline actions...`);
+
+    for (const entry of entries) {
+      try {
+        await fetch(entry.url, {
+          method: entry.method,
+          headers: entry.headers,
+          body: entry.body || undefined,
+          credentials: 'include'
+        });
+      } catch (e) {
+        console.warn('[SW] Replay failed, will retry:', e);
+        throw e; // Re-throw to trigger retry
+      }
+    }
+
+    // Clear queue after successful replay
+    const clearTx = db.transaction('queue', 'readwrite');
+    clearTx.objectStore('queue').clear();
+    await new Promise(resolve => { clearTx.oncomplete = resolve; });
+    console.log('[SW] All offline actions replayed successfully');
+
+    // Notify clients
+    const allClients = await self.clients.matchAll();
+    allClients.forEach(client => client.postMessage({ type: 'SYNC_COMPLETE' }));
+  } catch (e) {
+    console.warn('[SW] Background sync failed:', e);
+  }
+}
+
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-offline-actions') {
+    event.waitUntil(replayOfflineActions());
+  }
+});

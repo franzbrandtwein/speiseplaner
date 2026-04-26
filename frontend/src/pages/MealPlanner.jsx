@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import {
   ChevronLeft, ChevronRight, Plus, X, Save, ShoppingCart,
   Coffee, UtensilsCrossed, Moon, ChefHat, ArrowLeft,
-  Search, Minus, GripVertical, Users
+  Search, Minus, GripVertical, Users, Copy, BookTemplate, Bookmark
 } from "lucide-react";
 import { format, startOfWeek, addDays, addWeeks, subWeeks } from "date-fns";
 import { de } from "date-fns/locale";
@@ -564,6 +564,10 @@ const MealPlanner = () => {
   const [dragOverTarget, setDragOverTarget] = useState(null);
   const [moveSource, setMoveSource] = useState(null); // Mobile tap-to-move
   const [groupMembers, setGroupMembers] = useState([]); // For assigned_to
+  const [templates, setTemplates] = useState([]);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false); // "save" | "apply" | false
+  const [templateName, setTemplateName] = useState("");
+  const [showCopyDialog, setShowCopyDialog] = useState(false);
 
   const weekStartStr = format(currentWeekStart, "yyyy-MM-dd");
 
@@ -793,6 +797,56 @@ const MealPlanner = () => {
     }
   };
 
+  // Template functions
+  const fetchTemplates = async () => {
+    try {
+      const res = await axios.get(`${API}/mealplan-templates`, { withCredentials: true });
+      setTemplates(res.data);
+    } catch (e) { console.error(e); }
+  };
+
+  const saveAsTemplate = async () => {
+    if (!templateName.trim()) return;
+    try {
+      await axios.post(`${API}/mealplan-templates`, { name: templateName.trim(), week_start: weekStartStr }, { withCredentials: true });
+      toast.success("Vorlage gespeichert");
+      setShowTemplateDialog(false);
+      setTemplateName("");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Fehler beim Speichern der Vorlage");
+    }
+  };
+
+  const applyTemplate = async (templateId) => {
+    try {
+      await axios.post(`${API}/mealplan-templates/${templateId}/apply?week_start=${weekStartStr}`, {}, { withCredentials: true });
+      toast.success("Vorlage angewendet");
+      setShowTemplateDialog(false);
+      fetchData();
+    } catch (e) {
+      toast.error("Fehler beim Anwenden der Vorlage");
+    }
+  };
+
+  const deleteTemplate = async (templateId) => {
+    try {
+      await axios.delete(`${API}/mealplan-templates/${templateId}`, { withCredentials: true });
+      setTemplates(prev => prev.filter(t => t.template_id !== templateId));
+      toast.success("Vorlage gelöscht");
+    } catch (e) { toast.error("Fehler"); }
+  };
+
+  const copyWeek = async () => {
+    try {
+      const nextWeek = format(addWeeks(currentWeekStart, 1), "yyyy-MM-dd");
+      await axios.post(`${API}/mealplans/copy?source_week=${weekStartStr}&target_week=${nextWeek}`, {}, { withCredentials: true });
+      toast.success("Wochenplan in nächste Woche kopiert");
+      setShowCopyDialog(false);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Fehler beim Kopieren");
+    }
+  };
+
   const mealTypes = [
     { key: "breakfast", label: "Frühstück", icon: Coffee },
     { key: "lunch", label: "Mittagessen", icon: UtensilsCrossed },
@@ -822,7 +876,16 @@ const MealPlanner = () => {
               Plane deine Mahlzeiten für die Woche
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" onClick={() => { setShowTemplateDialog("apply"); fetchTemplates(); }} className="btn-secondary" data-testid="apply-template-btn">
+              <Bookmark className="w-4 h-4" /> Vorlagen
+            </Button>
+            <Button variant="outline" onClick={() => setShowTemplateDialog("save")} className="btn-secondary" data-testid="save-template-btn">
+              <Bookmark className="w-4 h-4" /> Als Vorlage
+            </Button>
+            <Button variant="outline" onClick={() => setShowCopyDialog(true)} className="btn-secondary" data-testid="copy-week-btn">
+              <Copy className="w-4 h-4" /> Kopieren
+            </Button>
             <Link to="/shopping-list">
               <Button variant="outline" className="btn-secondary">
                 <ShoppingCart className="w-4 h-4" /> Einkaufsliste
@@ -988,6 +1051,74 @@ const MealPlanner = () => {
           recipes={recipes}
           groupMembers={groupMembers}
         />
+
+        {/* Template Save Dialog */}
+        <Dialog open={showTemplateDialog === "save"} onOpenChange={() => setShowTemplateDialog(false)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Als Vorlage speichern</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Input
+                value={templateName}
+                onChange={e => setTemplateName(e.target.value)}
+                placeholder="Name der Vorlage"
+                data-testid="template-name-input"
+              />
+              <Button onClick={saveAsTemplate} disabled={!templateName.trim()} className="btn-primary w-full" data-testid="confirm-save-template">
+                <Bookmark className="w-4 h-4" /> Vorlage speichern
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Template Apply Dialog */}
+        <Dialog open={showTemplateDialog === "apply"} onOpenChange={() => setShowTemplateDialog(false)}>
+          <DialogContent className="max-w-md max-h-[70vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle>Vorlage anwenden</DialogTitle>
+              <p className="text-sm text-[var(--text-muted)]">Wende eine Vorlage auf die aktuelle Woche an</p>
+            </DialogHeader>
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {templates.length === 0 ? (
+                <p className="text-sm text-[var(--text-muted)] text-center py-8">Noch keine Vorlagen gespeichert</p>
+              ) : templates.map(t => (
+                <div key={t.template_id} className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
+                  <div>
+                    <p className="font-medium text-sm text-[var(--text-primary)]">{t.name}</p>
+                    <p className="text-xs text-[var(--text-muted)]">{new Date(t.created_at).toLocaleDateString("de-DE")}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => applyTemplate(t.template_id)} className="btn-primary" data-testid={`apply-tmpl-${t.template_id}`}>
+                      Anwenden
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => deleteTemplate(t.template_id)} className="text-red-500 hover:bg-red-50">
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Copy Week Dialog */}
+        <Dialog open={showCopyDialog} onOpenChange={setShowCopyDialog}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Wochenplan kopieren</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-[var(--text-secondary)]">
+              Den aktuellen Wochenplan in die <strong>nächste Woche</strong> ({format(addWeeks(currentWeekStart, 1), "d. MMMM", { locale: de })} – {format(addDays(addWeeks(currentWeekStart, 1), 6), "d. MMMM", { locale: de })}) kopieren?
+            </p>
+            <div className="flex gap-2 pt-2">
+              <Button onClick={copyWeek} className="btn-primary flex-1" data-testid="confirm-copy-week">
+                <Copy className="w-4 h-4" /> Kopieren
+              </Button>
+              <Button variant="outline" onClick={() => setShowCopyDialog(false)}>Abbrechen</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
