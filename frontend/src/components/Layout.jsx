@@ -5,7 +5,7 @@ import { useAuth, API } from "../App";
 import { Button } from "./ui/button";
 import { 
   ChefHat, LayoutDashboard, BookOpen, Calendar, ShoppingCart, 
-  LogOut, Menu, X, User, Sparkles, Users, RefreshCw, Bell, Package, Flame
+  LogOut, Menu, X, User, Sparkles, Users, RefreshCw, Bell, Package, Flame, Shield
 } from "lucide-react";
 import InstallPrompt, { InstallButton } from "./InstallPrompt";
 import {
@@ -63,6 +63,7 @@ const Layout = ({ children }) => {
     { path: "/nutrition", label: "Nährwerte", icon: Flame },
     { path: "/group", label: "Gruppe", icon: Users },
     { path: "/notifications", label: "Benachrichtigungen", icon: Bell },
+    { path: "/admin", label: "Admin", icon: Shield },
   ];
 
   return (

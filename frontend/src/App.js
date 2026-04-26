@@ -19,6 +19,7 @@ import NotificationSettings from "./pages/NotificationSettings";
 import StapleItems from "./pages/StapleItems";
 import RecipePrint from "./pages/RecipePrint";
 import NutritionTracking from "./pages/NutritionTracking";
+import AdminDashboard from "./pages/AdminDashboard";
 
 // Smart backend URL: adapts to reverse proxy setups
 // When accessed via a different hostname (reverse proxy), use the current origin
@@ -257,6 +258,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <NutritionTracking />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <AdminDashboard />
           </ProtectedRoute>
         }
       />
