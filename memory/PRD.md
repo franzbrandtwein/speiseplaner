@@ -58,6 +58,16 @@
 - Fresh Basil Green Primary Color (#10B981)
 - German Language UI
 
+## Admin Dashboard (Apr 2026)
+- [x] Admin-Bereich mit ADMIN_EMAIL Umgebungsvariable (26.04.2026)
+  - Fester Admin per ADMIN_EMAIL in backend/.env
+  - User-Übersicht mit Statistiken (Rezepte, Pläne, Artikel pro User)
+  - Voller Einblick in alle Daten eines Users (Rezepte, Speisepläne, Sonstige Artikel, Vorlagen)
+  - ZIP-Export aller Daten (separate JSON-Dateien pro Collection)
+  - ZIP-Import mit Modus-Wahl (Zusammenführen / Überschreiben)
+  - 403-Schutz für Nicht-Admins
+  - Testing: 100% Backend (16/16) + Frontend (alle Admin-Flows)
+
 ## P2 Features (Apr 2026)
 - [x] Wochenplan-Vorlagen (26.04.2026)
   - Vorlagen speichern, anwenden, löschen
