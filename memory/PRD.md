@@ -58,7 +58,25 @@
 - Fresh Basil Green Primary Color (#10B981)
 - German Language UI
 
-## Bug Fixes (Mar 2026)
+## P2 Features (Apr 2026)
+- [x] Wochenplan-Vorlagen (26.04.2026)
+  - Vorlagen speichern, anwenden, löschen
+  - Backend: /api/mealplan-templates CRUD
+  - Frontend: Dialoge im Speiseplan-Header
+- [x] Wochenplan kopieren (26.04.2026)
+  - Aktuellen Plan in nächste Woche kopieren
+  - Backend: POST /api/mealplans/copy
+- [x] Druckfreundliche Rezeptansicht (26.04.2026)
+  - /recipes/:id/print mit Portionsmultiplikator (0.5x-4x)
+  - Drucken-Button in RecipeDetail
+- [x] Nährwerte-Tracking (26.04.2026)
+  - Wochendurchschnitt + Tagesansicht (Kalorien, Protein, KH, Fett, Ballaststoffe)
+  - Backend: GET /api/nutrition/daily?date=
+  - Frontend: /nutrition Seite + Navigation
+- [x] Background Sync für Offline-Aktionen (26.04.2026)
+  - Service Worker queued POST/PUT/DELETE bei offline in IndexedDB
+  - Replay bei Verbindungswiederherstellung
+- Testing: 100% Backend (12/12) + Frontend (alle P2 Flows)
 - [x] Beilagen im Speiseplan werden dauerhaft gespeichert (VERIFIZIERT - Backend + Frontend Tests bestanden)
 - [x] Einkaufsliste berücksichtigt Beilagen korrekt
 - [x] Chefkoch-Import: Zubereitungstext korrekt erfasst
