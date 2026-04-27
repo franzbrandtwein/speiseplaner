@@ -1103,6 +1103,82 @@ async def import_recipe_save(recipe_data: RecipeCreate, user: User = Depends(get
     return recipe_doc
 
 
+class ClipboardImportRequest(BaseModel):
+    text: str  # Pasted recipe text from clipboard
+
+@api_router.post("/recipes/import-clipboard")
+async def import_from_clipboard(data: ClipboardImportRequest, user: User = Depends(get_current_user)):
+    """Parse recipe from pasted text using LLM (for sites that block scraping)"""
+    text = data.text.strip()
+    if len(text) < 20:
+        raise HTTPException(status_code=400, detail="Text ist zu kurz. Bitte kopiere den kompletten Rezepttext.")
+    if len(text) > 50000:
+        raise HTTPException(status_code=400, detail="Text ist zu lang (max 50.000 Zeichen)")
+
+    # Use LLM to parse the pasted text
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+        prompt = f"""Du bist ein Rezept-Parser. Extrahiere aus dem folgenden Text alle Rezeptinformationen und gib sie als JSON zurück.
+
+Format:
+{{
+  "name": "Rezeptname",
+  "description": "Kurzbeschreibung (optional)",
+  "category": "Kategorie (z.B. Hauptgericht, Vorspeise, Dessert, Snack)",
+  "portions": 4,
+  "prep_time": 15,
+  "cook_time": 30,
+  "ingredients": [
+    {{"name": "Zutat", "amount": "200", "unit": "g"}}
+  ],
+  "instructions": ["Schritt 1", "Schritt 2"],
+  "nutrition": {{
+    "calories": 450,
+    "protein": 25,
+    "carbs": 50,
+    "fat": 15,
+    "fiber": 5
+  }}
+}}
+
+Falls Nährwerte nicht angegeben sind, schätze sie basierend auf den Zutaten.
+Falls Einheiten fehlen, verwende sinnvolle Standardwerte.
+Antworte NUR mit dem JSON, kein anderer Text.
+
+Rezepttext:
+{text[:15000]}"""
+
+        llm = LlmChat(
+            api_key=EMERGENT_KEY,
+            session_id=f"clipboard_import_{uuid.uuid4().hex[:8]}",
+            system_message="Du bist ein Rezept-Parser. Antworte NUR mit validem JSON."
+        )
+        msg = UserMessage(text=prompt)
+        response = await llm.send_message(msg)
+        
+        # Parse the LLM response
+        resp_text = response.strip()
+        # Remove markdown code fences if present
+        if resp_text.startswith("```"):
+            resp_text = resp_text.split("\n", 1)[1] if "\n" in resp_text else resp_text[3:]
+        if resp_text.endswith("```"):
+            resp_text = resp_text[:-3]
+        if resp_text.startswith("json"):
+            resp_text = resp_text[4:]
+        
+        recipe_data = json.loads(resp_text.strip())
+        recipe_data['import_method'] = 'clipboard-llm'
+        
+        return {"success": True, "recipe": recipe_data, "method": "clipboard-llm"}
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=422, detail=f"Rezept konnte nicht aus dem Text extrahiert werden. Bitte versuche es mit einem klareren Textformat.")
+    except Exception as e:
+        logger.error(f"Clipboard import LLM error: {e}")
+        raise HTTPException(status_code=500, detail=f"Fehler bei der KI-Analyse: {str(e)[:200]}")
+
+
 @api_router.get("/recipes/{recipe_id}")
 async def get_recipe(recipe_id: str, user: User = Depends(get_current_user)):
     """Get a single recipe with ratings and populated side dishes"""
@@ -2335,178 +2411,10 @@ async def get_notification_status(user: User = Depends(get_current_user)):
         }
     }
 
-# ============ ADMIN ENDPOINTS ============
-
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
-
-async def require_admin(user: User = Depends(get_current_user)):
-    if not ADMIN_EMAIL or user.email != ADMIN_EMAIL:
-        raise HTTPException(status_code=403, detail="Kein Admin-Zugriff")
-    return user
-
-@api_router.get("/admin/users")
-async def admin_list_users(user: User = Depends(require_admin)):
-    """List all users with stats"""
-    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
-    result = []
-    for u in users:
-        uid = u["user_id"]
-        recipe_count = await db.recipes.count_documents({"user_id": uid})
-        plan_count = await db.meal_plans.count_documents({"user_id": uid})
-        staple_count = await db.staple_items.count_documents({"user_id": uid})
-        result.append({
-            **u,
-            "recipe_count": recipe_count,
-            "plan_count": plan_count,
-            "staple_count": staple_count,
-        })
-    return result
-
-@api_router.get("/admin/users/{user_id}/data")
-async def admin_user_data(user_id: str, user: User = Depends(require_admin)):
-    """Get all data for a specific user"""
-    target = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
-    if not target:
-        raise HTTPException(status_code=404, detail="User nicht gefunden")
-    recipes = await db.recipes.find({"user_id": user_id}, {"_id": 0}).to_list(1000)
-    plans = await db.meal_plans.find({"user_id": user_id}, {"_id": 0}).to_list(200)
-    staples = await db.staple_items.find({"user_id": user_id}, {"_id": 0}).to_list(500)
-    templates = await db.meal_plan_templates.find({"user_id": user_id}, {"_id": 0}).to_list(100)
-    subscriptions = await db.push_subscriptions.find({"user_id": user_id}, {"_id": 0}).to_list(50)
-    return {
-        "user": target,
-        "recipes": recipes,
-        "meal_plans": plans,
-        "staple_items": staples,
-        "templates": templates,
-        "push_subscriptions": subscriptions,
-    }
-
-@api_router.get("/admin/export")
-async def admin_export(user: User = Depends(require_admin)):
-    """Export all data as ZIP with separate JSON files per collection"""
-    import io
-    import zipfile
-
-    collections = {
-        "users": db.users,
-        "recipes": db.recipes,
-        "meal_plans": db.meal_plans,
-        "staple_items": db.staple_items,
-        "meal_plan_templates": db.meal_plan_templates,
-        "push_subscriptions": db.push_subscriptions,
-        "notification_settings": db.notification_settings,
-        "sessions": db.sessions,
-        "groups": db.groups,
-    }
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name, coll in collections.items():
-            docs = await coll.find({}, {"_id": 0}).to_list(10000)
-            # Strip password hashes from user export
-            if name == "users":
-                for d in docs:
-                    d.pop("password_hash", None)
-            zf.writestr(f"{name}.json", json.dumps(docs, ensure_ascii=False, indent=2, default=str))
-        
-        # Metadata
-        meta = {
-            "exported_at": datetime.now(timezone.utc).isoformat(),
-            "exported_by": user.email,
-            "collections": list(collections.keys()),
-            "version": "1.0"
-        }
-        zf.writestr("_metadata.json", json.dumps(meta, ensure_ascii=False, indent=2))
-
-    buf.seek(0)
-    from starlette.responses import StreamingResponse
-    filename = f"kochplaner_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-    return StreamingResponse(
-        buf,
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
-
-class ImportRequest(BaseModel):
-    mode: str = "merge"  # "merge" or "overwrite"
-
-@api_router.post("/admin/import")
-async def admin_import(mode: str = "merge", user: User = Depends(require_admin)):
-    """Import data from ZIP. Mode: 'merge' (add new, skip existing) or 'overwrite' (drop and replace)"""
-    return {"detail": "Bitte verwende den Upload-Endpunkt /api/admin/import-upload"}
-
-@api_router.post("/admin/import-upload")
-async def admin_import_upload(file: UploadFile, mode: str = "merge", user: User = Depends(require_admin)):
-    """Import data from uploaded ZIP file"""
-    import io
-    import zipfile
-
-    content = await file.read()
-    buf = io.BytesIO(content)
-    
-    if not zipfile.is_zipfile(buf):
-        raise HTTPException(status_code=400, detail="Keine gültige ZIP-Datei")
-    
-    buf.seek(0)
-    
-    collection_map = {
-        "users": db.users,
-        "recipes": db.recipes,
-        "meal_plans": db.meal_plans,
-        "staple_items": db.staple_items,
-        "meal_plan_templates": db.meal_plan_templates,
-        "push_subscriptions": db.push_subscriptions,
-        "notification_settings": db.notification_settings,
-        "sessions": db.sessions,
-        "groups": db.groups,
-    }
-    
-    # ID fields per collection for merge dedup
-    id_fields = {
-        "users": "user_id",
-        "recipes": "recipe_id",
-        "meal_plans": "plan_id",
-        "staple_items": "item_id",
-        "meal_plan_templates": "template_id",
-        "push_subscriptions": "sub_id",
-        "notification_settings": "user_id",
-        "sessions": "session_id",
-        "groups": "group_id",
-    }
-    
-    stats = {}
-    with zipfile.ZipFile(buf, "r") as zf:
-        for name, coll in collection_map.items():
-            filename = f"{name}.json"
-            if filename not in zf.namelist():
-                continue
-            
-            data = json.loads(zf.read(filename))
-            if not isinstance(data, list) or len(data) == 0:
-                stats[name] = {"skipped": True, "reason": "empty"}
-                continue
-            
-            if mode == "overwrite":
-                await coll.delete_many({})
-                result = await coll.insert_many(data)
-                stats[name] = {"imported": len(data), "mode": "overwrite"}
-            else:
-                # Merge: only insert docs with IDs not already present
-                id_field = id_fields.get(name)
-                inserted = 0
-                skipped = 0
-                for doc in data:
-                    if id_field and doc.get(id_field):
-                        existing = await coll.find_one({id_field: doc[id_field]})
-                        if existing:
-                            skipped += 1
-                            continue
-                    await coll.insert_one(doc)
-                    inserted += 1
-                stats[name] = {"inserted": inserted, "skipped": skipped, "mode": "merge"}
-    
-    return {"message": "Import abgeschlossen", "stats": stats}
+# ============ ADMIN ENDPOINTS (extracted to routes/admin.py) ============
+from routes.admin import get_router as get_admin_router
+admin_router = get_admin_router(db, get_current_user, User)
+app.include_router(admin_router)
 
 # ============ ROOT ============
 

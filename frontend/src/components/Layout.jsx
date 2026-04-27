@@ -53,6 +53,15 @@ const Layout = ({ children }) => {
     }
   };
 
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    // Check admin status
+    axios.get(`${API}/admin/users`, { withCredentials: true })
+      .then(() => setIsAdmin(true))
+      .catch(() => setIsAdmin(false));
+  }, []);
+
   const navItems = [
     { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { path: "/recipes", label: "Rezepte", icon: BookOpen },
@@ -63,7 +72,7 @@ const Layout = ({ children }) => {
     { path: "/nutrition", label: "Nährwerte", icon: Flame },
     { path: "/group", label: "Gruppe", icon: Users },
     { path: "/notifications", label: "Benachrichtigungen", icon: Bell },
-    { path: "/admin", label: "Admin", icon: Shield },
+    ...(isAdmin ? [{ path: "/admin", label: "Admin", icon: Shield }] : []),
   ];
 
   return (

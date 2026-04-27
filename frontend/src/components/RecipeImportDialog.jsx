@@ -145,6 +145,8 @@ const RecipePreview = ({ recipe, onSave, onEdit, saving }) => {
 
 const RecipeImportDialog = ({ open, onClose, onImported }) => {
   const [url, setUrl] = useState("");
+  const [clipText, setClipText] = useState("");
+  const [mode, setMode] = useState("url"); // "url" | "clipboard"
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState(null);
@@ -165,6 +167,27 @@ const RecipeImportDialog = ({ open, onClose, onImported }) => {
       setPreview(res.data.recipe);
     } catch (err) {
       const msg = err.response?.data?.detail || "Fehler beim Laden des Rezepts";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClipboard = async () => {
+    if (!clipText.trim()) return;
+    setLoading(true);
+    setError("");
+    setPreview(null);
+
+    try {
+      const res = await axios.post(
+        `${API}/recipes/import-clipboard`,
+        { text: clipText.trim() },
+        { withCredentials: true }
+      );
+      setPreview(res.data.recipe);
+    } catch (err) {
+      const msg = err.response?.data?.detail || "Fehler beim Analysieren des Textes";
       setError(msg);
     } finally {
       setLoading(false);
@@ -199,8 +222,10 @@ const RecipeImportDialog = ({ open, onClose, onImported }) => {
 
   const handleClose = () => {
     setUrl("");
+    setClipText("");
     setError("");
     setPreview(null);
+    setMode("url");
     onClose();
   };
 
@@ -222,7 +247,30 @@ const RecipeImportDialog = ({ open, onClose, onImported }) => {
         </DialogHeader>
 
         <div className="space-y-5">
+          {/* Mode Tabs */}
+          <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+            <button
+              onClick={() => { setMode("url"); setError(""); setPreview(null); }}
+              className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-all ${
+                mode === "url" ? "bg-white text-[var(--text-primary)] shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              }`}
+              data-testid="import-tab-url"
+            >
+              URL
+            </button>
+            <button
+              onClick={() => { setMode("clipboard"); setError(""); setPreview(null); }}
+              className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-all ${
+                mode === "clipboard" ? "bg-white text-[var(--text-primary)] shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              }`}
+              data-testid="import-tab-clipboard"
+            >
+              Text einfügen
+            </button>
+          </div>
+
           {/* URL Input */}
+          {mode === "url" && (
           <div className="space-y-2">
             <div className="flex gap-2">
               <Input
@@ -232,12 +280,14 @@ const RecipeImportDialog = ({ open, onClose, onImported }) => {
                 placeholder="https://www.rewe.de/rezepte/spaghetti-carbonara/"
                 className="flex-1 text-sm"
                 disabled={loading}
+                data-testid="import-url-input"
               />
               <Button
                 onClick={handleFetch}
                 disabled={!url.trim() || loading}
                 className="btn-primary flex-shrink-0"
                 type="button"
+                data-testid="import-url-fetch"
               >
                 {loading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -246,6 +296,35 @@ const RecipeImportDialog = ({ open, onClose, onImported }) => {
                 )}
               </Button>
             </div>
+          </div>
+          )}
+
+          {/* Clipboard Input */}
+          {mode === "clipboard" && (
+          <div className="space-y-2">
+            <textarea
+              value={clipText}
+              onChange={(e) => { setClipText(e.target.value); setError(""); }}
+              placeholder={"Rezepttext hier einfügen...\n\nKopiere den Text von der Rezept-Seite (z.B. REWE, HelloFresh) und füge ihn hier ein. Die KI erkennt automatisch Zutaten, Schritte und Nährwerte."}
+              className="w-full h-40 border border-gray-200 rounded-xl p-3 text-sm resize-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300 outline-none"
+              disabled={loading}
+              data-testid="import-clipboard-textarea"
+            />
+            <Button
+              onClick={handleClipboard}
+              disabled={!clipText.trim() || loading}
+              className="btn-primary w-full"
+              type="button"
+              data-testid="import-clipboard-parse"
+            >
+              {loading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Wird analysiert...</>
+              ) : (
+                <><Download className="w-4 h-4" /> Mit KI analysieren</>
+              )}
+            </Button>
+          </div>
+          )}
 
             {/* Error message */}
             {error && (
@@ -254,10 +333,9 @@ const RecipeImportDialog = ({ open, onClose, onImported }) => {
                 <span>{error}</span>
               </div>
             )}
-          </div>
 
-          {/* Supported sites */}
-          {!preview && !loading && (
+          {/* Supported sites (URL mode only) */}
+          {!preview && !loading && mode === "url" && (
             <div>
               <p className="text-xs font-medium text-gray-500 mb-2">Unterstützte Seiten:</p>
               <div className="flex flex-wrap gap-2">
