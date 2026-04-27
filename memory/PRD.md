@@ -58,6 +58,20 @@
 - Fresh Basil Green Primary Color (#10B981)
 - German Language UI
 
+## Verbleibende Tasks erledigt (Apr 2026)
+- [x] Admin-Link nur für Admin-User sichtbar (27.04.2026)
+  - Layout.jsx prüft /api/admin/users Response → isAdmin State
+- [x] Backend Refactoring: Admin-Endpunkte in routes/admin.py extrahiert (27.04.2026)
+  - Factory-Pattern mit get_router() für Dependency Injection
+  - server.py von 2527 auf 2434 Zeilen reduziert
+- [x] Alternative Import-Methode: Clipboard/Text-Import mit KI (27.04.2026)
+  - POST /api/recipes/import-clipboard analysiert eingefügten Text per LLM (Gemini)
+  - Erkennt Zutaten, Schritte, Nährwerte automatisch
+  - Import-Dialog mit Tabs: "URL" und "Text einfügen"
+- [x] Rezept-Import von weiteren Websites getestet (27.04.2026)
+  - EatSmarter ✅, Chefkoch ✅
+  - Testing: 100% Backend (14/14) + Frontend (alle Flows)
+
 ## Admin Dashboard (Apr 2026)
 - [x] Admin-Bereich mit ADMIN_EMAIL Umgebungsvariable (26.04.2026)
   - Fester Admin per ADMIN_EMAIL in backend/.env
