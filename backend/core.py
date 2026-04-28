@@ -15,7 +15,6 @@ from dotenv import load_dotenv
 from fastapi import HTTPException, Request, Depends
 from motor.motor_asyncio import AsyncIOMotorClient
 from pywebpush import webpush, WebPushException
-import requests as sync_requests
 
 from models import User
 
@@ -36,45 +35,44 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# ============ OBJECT STORAGE ============
+# ============ LOCAL FILE UPLOAD STORAGE ============
 
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/var/speiseplaner_bilder"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")  # used by LLM-based recipe import
 APP_NAME = "kochplaner"
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
-_storage_key = None
 
 
-def init_storage():
-    global _storage_key
-    if _storage_key:
-        return _storage_key
-    resp = sync_requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    _storage_key = resp.json()["storage_key"]
-    return _storage_key
+def _safe_path(rel_path: str) -> Path:
+    """Resolve and ensure the path stays inside UPLOAD_DIR (anti directory traversal)."""
+    target = (UPLOAD_DIR / rel_path).resolve()
+    if not str(target).startswith(str(UPLOAD_DIR.resolve())):
+        raise ValueError("Invalid path")
+    return target
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = sync_requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data, timeout=120
-    )
-    resp.raise_for_status()
-    return resp.json()
+    """Save uploaded bytes to local filesystem at UPLOAD_DIR/<path>."""
+    target = _safe_path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return {"path": path, "size": len(data), "content_type": content_type}
 
 
 def get_object(path: str):
-    key = init_storage()
-    resp = sync_requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key}, timeout=60
-    )
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    """Read bytes from UPLOAD_DIR/<path>. Raises FileNotFoundError if missing."""
+    target = _safe_path(path)
+    if not target.is_file():
+        raise FileNotFoundError(path)
+    data = target.read_bytes()
+    # Infer content-type from extension
+    ext = target.suffix.lower().lstrip(".")
+    ct_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+              "webp": "image/webp", "gif": "image/gif"}
+    return data, ct_map.get(ext, "application/octet-stream")
 
 
 # ============ SMTP CONFIG ============
