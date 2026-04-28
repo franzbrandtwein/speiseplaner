@@ -368,6 +368,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    remember_me: bool = False
 
 async def get_current_user(request: Request) -> User:
     """Extract and validate user from session token"""
@@ -484,7 +485,8 @@ async def login(data: LoginRequest, request: Request, response: Response):
     
     # Create session
     session_token = f"token_{uuid.uuid4().hex}"
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    session_days = 90 if data.remember_me else 7
+    expires_at = datetime.now(timezone.utc) + timedelta(days=session_days)
     
     session = UserSession(
         user_id=user_doc['user_id'],
@@ -498,6 +500,7 @@ async def login(data: LoginRequest, request: Request, response: Response):
     
     # Set cookie
     is_secure = _is_secure_request(request)
+    cookie_max_age = session_days * 24 * 60 * 60 if data.remember_me else None  # None = session cookie
     response.set_cookie(
         key="session_token",
         value=session_token,
@@ -505,7 +508,7 @@ async def login(data: LoginRequest, request: Request, response: Response):
         secure=is_secure,
         samesite="none" if is_secure else "lax",
         path="/",
-        max_age=7 * 24 * 60 * 60
+        max_age=cookie_max_age
     )
     
     return {

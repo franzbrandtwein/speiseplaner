@@ -21,7 +21,8 @@ const AuthPage = () => {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    name: ""
+    name: "",
+    remember_me: false
   });
 
   const handleGoogleLogin = () => {
@@ -37,7 +38,7 @@ const AuthPage = () => {
     try {
       const endpoint = isLogin ? "/auth/login" : "/auth/register";
       const payload = isLogin 
-        ? { email: formData.email, password: formData.password }
+        ? { email: formData.email, password: formData.password, remember_me: formData.remember_me }
         : formData;
 
       const response = await axios.post(`${API}${endpoint}`, payload, {
@@ -164,6 +165,19 @@ const AuthPage = () => {
                 <p className="text-xs text-[var(--text-muted)] mt-1">Mindestens 6 Zeichen</p>
               )}
             </div>
+
+            {isLogin && (
+              <label className="flex items-center gap-2 cursor-pointer" data-testid="remember-me-label">
+                <input
+                  type="checkbox"
+                  checked={formData.remember_me}
+                  onChange={(e) => setFormData({ ...formData, remember_me: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  data-testid="remember-me-checkbox"
+                />
+                <span className="text-sm text-[var(--text-secondary)]">Angemeldet bleiben</span>
+              </label>
+            )}
 
             <Button
               type="submit"
