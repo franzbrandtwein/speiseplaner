@@ -127,7 +127,11 @@ async def exchange_session(request: Request, response: Response):
 
 @router.get("/auth/me")
 async def get_me(user: User = Depends(get_current_user)):
-    return user.model_dump()
+    import os
+    admin_email = os.environ.get("ADMIN_EMAIL", "")
+    data = user.model_dump()
+    data["is_admin"] = bool(admin_email) and user.email == admin_email
+    return data
 
 
 @router.post("/auth/logout")

@@ -56,9 +56,9 @@ const Layout = ({ children }) => {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    // Check admin status
-    axios.get(`${API}/admin/users`, { withCredentials: true })
-      .then(() => setIsAdmin(true))
+    // Get admin status from /auth/me (avoids 403 console noise from probing /admin/users)
+    axios.get(`${API}/auth/me`, { withCredentials: true })
+      .then((res) => setIsAdmin(!!res.data?.is_admin))
       .catch(() => setIsAdmin(false));
   }, []);
 
