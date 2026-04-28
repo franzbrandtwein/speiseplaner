@@ -23,6 +23,14 @@
 ## What's Been Implemented
 
 ### Backend (FastAPI + MongoDB)
+- **[2026-04-28] REFACTORED**: Modular architecture
+  - `server.py` (56 lines) — thin orchestration layer
+  - `core.py` — DB, auth helpers, storage, push, SMTP
+  - `models.py` — all Pydantic models
+  - `routes/` — auth, recipes, mealplans, shopping, groups, notifications, admin
+- **[2026-04-28] "Angemeldet bleiben" Feature** — verified
+  - Default login: session cookie (Browser-Session)
+  - With remember_me=true: 90-day Max-Age cookie + 90-day session expiry
 - User Authentication (Emergent Google OAuth + Email/Password)
 - Recipe CRUD (create, read, update, delete)
 - Rating System (1-5 stars + text comments)
