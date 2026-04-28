@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 11: Frontend smoke regression after large backend refactoring (server.py 2438→56 lines, split into core.py/models.py/routes/*). Tested all main user flows post-refactor with test_debug@test.de. All pages load, all key data-testids present, navigation works, login + remember-me works, recipes/import/mealplanner/shopping/staples/nutrition/groups/notifications all render correctly. No backend API errors observed (other than expected 403 on /api/admin/users for non-admin user — by design).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Auth page loads at /auth with email-input, password-input, remember-me-checkbox, submit-button testids",
+    "Login with test_debug@test.de / password123 successful → redirects to /dashboard with welcome toast",
+    "Remember-me checkbox: session_token cookie has expires ~90 days in future (verified expires - now ≈ 7,776,000s)",
+    "Dashboard renders with stats (Rezepte=2, Mahlzeiten=0, Bewertungen=0), Heute-Plan, Schnellaktionen, Top bewertet",
+    "Recipes page (/recipes): renders 2 recipe cards (recipe-card-* testids), search-input, category-filter, difficulty-filter, add-recipe-button, Importieren button",
+    "Recipe detail (/recipes/:id): loads with image, title, portions, ingredients sidebar",
+    "Recipe Import dialog: opens with import-tab-url and import-tab-clipboard tabs, supported sites listed (REWE, KitchenStories, Chefkoch, Lecker.de, Eat Smarter, Springlane)",
+    "MealPlanner (/meal-planner): full week grid renders with meal-slot-{date}-{meal} testids for breakfast/lunch (×7 days), apply-template-btn, save-template-btn, copy-week-btn, save-plan-button, prev-week-button, next-week-button",
+    "ShoppingList (/shopping-list): renders week selector, progress bar, staple items section with staple-shopping-item-* testids",
+    "Staple Items (/staple-items): renders add-staple-item-btn, category filters, category-group-* sections, staple-item-* with toggle/edit/delete testids",
+    "Nutrition (/nutrition): renders with h1 'Nährwerte' and nutrition-tracking testid",
+    "Groups (/group): renders 'Gruppe erstellen' empty state with create-group-button",
+    "Notifications (/notifications): renders notification-settings-page with notification-status-card and subscribe-btn (push blocked in headless — expected)",
+    "User menu button (data-testid=user-menu-button) opens dropdown with 'Abmelden' link visible",
+    "Sidebar nav links present for all sections (nav-dashboard, nav-recipes, nav-ingredient-search, nav-meal-planner, nav-shopping-list, nav-staple-items, nav-nutrition, nav-group, nav-notifications)",
+    "No console errors (other than expected /api/admin/users 403 for non-admin user — Layout.jsx uses this to determine admin visibility)"
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Layout.jsx admin-detection via /api/admin/users 403 produces noisy console errors for every non-admin user on every navigation; consider switching to /api/auth/me with is_admin field or a dedicated /api/admin/check endpoint to avoid 8+ 403s per session in DevTools console.",
+    "Backend refactoring from server.py (2438→56 lines) into core.py + models.py + routes/{auth,recipes,mealplans,shopping,groups,notifications,admin}.py looks clean from frontend perspective — all API contracts unchanged, no breakage observed."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "skipped (per request — only frontend regression)",
+    "frontend": "100% (all tested flows working)"
+  },
+  "test_credentials": {
+    "non_admin": {"email": "test_debug@test.de", "password": "password123"},
+    "admin": {"email": "info@richardachatz.de", "note": "stored in iteration_10.json"}
+  },
+  "seed_data_creation": "No new seed data created. Used existing 2 recipes (Spaghetti Carbonara, Grüner Salat) and 2 staple items (Mineralwasser, Küchentücher).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Frontend regression after big backend refactor PASSED. All routes tested: /dashboard, /recipes, /recipes/:id, /meal-planner, /shopping-list, /staple-items, /nutrition, /group, /notifications. All testids stable. Remember-me 90-day cookie verified. Import dialog has both URL and clipboard tabs. Push notifications blocked in headless browser (expected). Admin tests skipped (info@richardachatz.de account password not in test_credentials.md, only iteration_10 had it). Console shows expected 403s on /api/admin/users from Layout.jsx admin probing — this is design choice, not a bug."
+}
