@@ -612,8 +612,8 @@ async def upload_recipe_image(recipe_id: str, file: UploadFile = File(...), user
     try:
         put_object(storage_path, data, file.content_type)
     except Exception as e:
-        logger.error(f"Image upload error: {e}")
-        raise HTTPException(status_code=500, detail="Fehler beim Hochladen")
+        logger.exception(f"Image upload error (storage_path={storage_path}): {e}")
+        raise HTTPException(status_code=500, detail=f"Fehler beim Hochladen: {type(e).__name__}: {str(e)[:200]}")
 
     image_url = f"/api/images/{storage_path}"
     images = recipe.get("images", [])

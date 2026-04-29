@@ -38,7 +38,15 @@ db = client[os.environ['DB_NAME']]
 # ============ LOCAL FILE UPLOAD STORAGE ============
 
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/var/speiseplaner_bilder"))
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    # Self-test: write & delete a probe file to validate permissions early
+    _probe = UPLOAD_DIR / ".write_probe"
+    _probe.write_bytes(b"ok")
+    _probe.unlink()
+    logger.info(f"UPLOAD_DIR is writable: {UPLOAD_DIR}")
+except Exception as _e:
+    logger.error(f"UPLOAD_DIR not writable ({UPLOAD_DIR}): {type(_e).__name__}: {_e}")
 
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")  # used by LLM-based recipe import
 APP_NAME = "kochplaner"
