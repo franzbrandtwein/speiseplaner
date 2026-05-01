@@ -290,7 +290,7 @@ const RecipeDetail = () => {
               <div className="flex gap-3 mt-6 flex-wrap">
                 <Link to={`/recipes/${id}/print`}>
                   <Button variant="outline" className="btn-secondary" data-testid="print-recipe-button">
-                    <Printer className="w-4 h-4" /> Drucken
+                    <Printer className="w-4 h-4" /> Kochansicht
                   </Button>
                 </Link>
                 {isOwner && (
