@@ -1,5 +1,6 @@
 """Kochplaner FastAPI app entrypoint - thin orchestration layer"""
 import asyncio
+import os
 from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
@@ -16,9 +17,18 @@ from models import User
 
 app = FastAPI()
 
+# CORS: allow_origins=["*"] + allow_credentials=True is rejected by browsers.
+# Use explicit origins from FRONTEND_URL env var plus common dev origins.
+_frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+_cors_origins = list({
+    _frontend_url,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+})
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
