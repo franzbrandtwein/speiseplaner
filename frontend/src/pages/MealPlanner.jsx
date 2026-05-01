@@ -102,6 +102,25 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
     r.name.toLowerCase().includes(mainSearch.toLowerCase())
   );
 
+  // Group by category with Hauptgericht first
+  const CATEGORY_ORDER = [
+    "Hauptgericht", "Frühstück", "Vorspeise", "Suppe", "Salat",
+    "Beilage", "Snack", "Dessert", "Getränk"
+  ];
+  const groupedMain = filteredMain.reduce((acc, r) => {
+    const cat = r.category || "Sonstige";
+    (acc[cat] = acc[cat] || []).push(r);
+    return acc;
+  }, {});
+  const sortedCategories = Object.keys(groupedMain).sort((a, b) => {
+    const ia = CATEGORY_ORDER.indexOf(a);
+    const ib = CATEGORY_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b, "de");
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
   const allowedSideIds = new Set(mainRecipe?.side_dishes || []);
 
   const filteredSide = recipes.filter(r =>
@@ -142,7 +161,7 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
                 data-testid="recipe-search-dialog"
               />
             </div>
-            <div className="flex-1 overflow-y-auto space-y-1.5">
+            <div className="flex-1 overflow-y-auto space-y-4">
               {filteredMain.length === 0 ? (
                 <div className="text-center py-10">
                   <ChefHat className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -151,32 +170,42 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
                   </p>
                 </div>
               ) : (
-                filteredMain.map(recipe => (
-                  <button
-                    key={recipe.recipe_id}
-                    onClick={() => pickRecipe(recipe)}
-                    className="w-full p-3 text-left rounded-xl border border-gray-100 hover:border-emerald-200 hover:bg-emerald-50 transition-all flex items-center gap-3"
-                    data-testid={`select-recipe-${recipe.recipe_id}`}
-                  >
-                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                      {recipe.image_url ? (
-                        <img src={recipe.image_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <ChefHat className="w-6 h-6 text-gray-300" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-[var(--text-primary)] truncate">{recipe.name}</p>
-                      <p className="text-sm text-[var(--text-muted)]">{recipe.category}</p>
-                    </div>
-                    {recipe.side_dishes?.length > 0 && (
-                      <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 flex-shrink-0">
-                        {recipe.side_dishes.length} Beilage{recipe.side_dishes.length !== 1 ? "n" : ""}
+                sortedCategories.map(cat => (
+                  <div key={cat} className="space-y-1.5" data-testid={`recipe-category-${cat}`}>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] px-1">
+                      {cat}
+                      <span className="ml-2 text-[var(--text-muted)] font-normal normal-case tracking-normal">
+                        ({groupedMain[cat].length})
                       </span>
-                    )}
-                  </button>
+                    </h3>
+                    {groupedMain[cat].map(recipe => (
+                      <button
+                        key={recipe.recipe_id}
+                        onClick={() => pickRecipe(recipe)}
+                        className="w-full p-3 text-left rounded-xl border border-gray-100 hover:border-emerald-200 hover:bg-emerald-50 transition-all flex items-center gap-3"
+                        data-testid={`select-recipe-${recipe.recipe_id}`}
+                      >
+                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                          {recipe.image_url ? (
+                            <img src={recipe.image_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <ChefHat className="w-6 h-6 text-gray-300" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-[var(--text-primary)] truncate">{recipe.name}</p>
+                          <p className="text-sm text-[var(--text-muted)]">{recipe.category}</p>
+                        </div>
+                        {recipe.side_dishes?.length > 0 && (
+                          <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 flex-shrink-0">
+                            {recipe.side_dishes.length} Beilage{recipe.side_dishes.length !== 1 ? "n" : ""}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 ))
               )}
             </div>
