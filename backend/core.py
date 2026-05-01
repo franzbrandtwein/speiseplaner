@@ -195,6 +195,62 @@ def _is_secure_request(request: Request) -> bool:
     return False
 
 
+def _is_cross_site(request: Request) -> bool:
+    """
+    Detect if the request is cross-site (Origin-Header host != target host).
+    When same-site, we prefer SameSite=Lax (better PWA compatibility on Android/iOS).
+    When cross-site, SameSite=None is required.
+    """
+    origin = request.headers.get("origin") or ""
+    if not origin:
+        # No Origin header (e.g., same-origin navigation, fresh tab) → treat as same-site
+        return False
+    try:
+        from urllib.parse import urlparse
+        origin_host = urlparse(origin).hostname or ""
+    except Exception:
+        return False
+    # Compare against Host / X-Forwarded-Host
+    target_host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or ""
+    ).split(":")[0]
+    cross = bool(target_host and origin_host and origin_host.lower() != target_host.lower())
+    return cross
+
+
+def cookie_kwargs(request: Request, max_age: int | None) -> dict:
+    """
+    Produce set_cookie kwargs with correct Secure/SameSite for the environment:
+    - Same-origin → SameSite=Lax (better PWA persistence on Android/iOS)
+    - Cross-origin over HTTPS → SameSite=None; Secure (required)
+    - HTTP dev → SameSite=Lax, Secure=False
+
+    Override via env var COOKIE_SAMESITE=lax|none|strict if auto-detection fails.
+    """
+    is_secure = _is_secure_request(request)
+    forced = (os.environ.get("COOKIE_SAMESITE") or "").strip().lower()
+    if forced in ("lax", "none", "strict"):
+        samesite = forced
+        secure = is_secure or samesite == "none"
+    else:
+        cross = _is_cross_site(request)
+        if cross and is_secure:
+            samesite = "none"
+            secure = True
+        else:
+            samesite = "lax"
+            secure = is_secure
+    return {
+        "httponly": True,
+        "secure": secure,
+        "samesite": samesite,
+        "path": "/",
+        "max_age": max_age,
+    }
+
+
 async def get_current_user(request: Request) -> User:
     """Extract and validate user from session token"""
     session_token = request.cookies.get("session_token")

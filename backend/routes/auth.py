@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response, Depends
 
-from core import db, get_current_user, hash_password, verify_password, _is_secure_request
+from core import db, get_current_user, hash_password, verify_password, cookie_kwargs
 from models import User, UserSession, RegisterRequest, LoginRequest
 
 router = APIRouter(prefix="/api")
@@ -35,10 +35,9 @@ async def register(data: RegisterRequest, request: Request, response: Response):
     session_doc['created_at'] = session_doc['created_at'].isoformat()
     await db.user_sessions.insert_one(session_doc)
 
-    is_secure = _is_secure_request(request)
     response.set_cookie(
-        key="session_token", value=session_token, httponly=True, secure=is_secure,
-        samesite="none" if is_secure else "lax", path="/", max_age=7 * 24 * 60 * 60,
+        key="session_token", value=session_token,
+        **cookie_kwargs(request, 7 * 24 * 60 * 60)
     )
     return {"user_id": user_id, "email": data.email, "name": data.name}
 
@@ -61,11 +60,10 @@ async def login(data: LoginRequest, request: Request, response: Response):
     session_doc['created_at'] = session_doc['created_at'].isoformat()
     await db.user_sessions.insert_one(session_doc)
 
-    is_secure = _is_secure_request(request)
     cookie_max_age = session_days * 24 * 60 * 60 if data.remember_me else None
     response.set_cookie(
-        key="session_token", value=session_token, httponly=True, secure=is_secure,
-        samesite="none" if is_secure else "lax", path="/", max_age=cookie_max_age,
+        key="session_token", value=session_token,
+        **cookie_kwargs(request, cookie_max_age)
     )
     return {
         "user_id": user_doc['user_id'], "email": user_doc['email'],
@@ -115,10 +113,9 @@ async def exchange_session(request: Request, response: Response):
     session_doc['created_at'] = session_doc['created_at'].isoformat()
     await db.user_sessions.insert_one(session_doc)
 
-    is_secure = _is_secure_request(request)
     response.set_cookie(
-        key="session_token", value=session_token, httponly=True, secure=is_secure,
-        samesite="none" if is_secure else "lax", path="/", max_age=7 * 24 * 60 * 60,
+        key="session_token", value=session_token,
+        **cookie_kwargs(request, 7 * 24 * 60 * 60)
     )
 
     user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})

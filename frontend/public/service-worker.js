@@ -4,7 +4,7 @@
 //  - API calls (/api/*) → Network First with Cache Fallback
 //  - Images → Cache First with Network Fallback
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const APP_SHELL_CACHE = `speisenplaner-shell-${CACHE_VERSION}`;
 const API_CACHE = `speisenplaner-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `speisenplaner-images-${CACHE_VERSION}`;
@@ -97,6 +97,12 @@ self.addEventListener('fetch', (event) => {
   const isSameOrigin = url.origin === self.location.origin;
   const isFontRequest = url.hostname === 'fonts.googleapis.com' ||
                         url.hostname === 'fonts.gstatic.com';
+
+  // ── Auth Endpoints: Network Only, NEVER cache (cookies + credentials) ──
+  if (url.pathname.startsWith('/api/auth/')) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   // ── API Calls: Network First → Cache Fallback ──
   if (url.pathname.startsWith('/api/')) {
