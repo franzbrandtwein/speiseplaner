@@ -9,7 +9,7 @@ import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { 
   ChefHat, Clock, Users, Star, ArrowLeft, Edit, Trash2, 
-  AlertTriangle, DollarSign, Flame, UtensilsCrossed, Upload, X, ChevronLeft, ChevronRight, Printer
+  AlertTriangle, DollarSign, Flame, UtensilsCrossed, Upload, X, ChevronLeft, ChevronRight
 } from "lucide-react";
 import {
   AlertDialog,
@@ -290,7 +290,7 @@ const RecipeDetail = () => {
               <div className="flex gap-3 mt-6 flex-wrap">
                 <Link to={`/recipes/${id}/print`}>
                   <Button variant="outline" className="btn-secondary" data-testid="print-recipe-button">
-                    <Printer className="w-4 h-4" /> Kochansicht
+                    <ChefHat className="w-4 h-4" /> Kochansicht
                   </Button>
                 </Link>
                 {isOwner && (
