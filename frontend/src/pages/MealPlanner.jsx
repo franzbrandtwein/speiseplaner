@@ -102,8 +102,11 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
     r.name.toLowerCase().includes(mainSearch.toLowerCase())
   );
 
+  const allowedSideIds = new Set(mainRecipe?.side_dishes || []);
+
   const filteredSide = recipes.filter(r =>
     r.recipe_id !== mainRecipe?.recipe_id &&
+    allowedSideIds.has(r.recipe_id) &&
     !sideDishes.find(s => s.recipe_id === r.recipe_id) &&
     (sideSearch === "" || r.name.toLowerCase().includes(sideSearch.toLowerCase()))
   );
@@ -328,47 +331,60 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
                   </div>
                 )}
 
-                {/* Add side dish search */}
-                <div className="relative">
-                  <div className="flex items-center gap-2 border border-dashed border-gray-300 hover:border-emerald-400 focus-within:border-emerald-400 rounded-xl px-3 py-2 bg-white transition-colors">
-                    <Plus className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                    <input
-                      type="text"
-                      placeholder="Beilage hinzufügen…"
-                      value={sideSearch}
-                      onChange={e => { setSideSearch(e.target.value); setShowSideDropdown(true); }}
-                      onFocus={() => setShowSideDropdown(true)}
-                      onBlur={() => setTimeout(() => setShowSideDropdown(false), 200)}
-                      className="flex-1 text-sm outline-none bg-transparent placeholder:text-gray-400 text-[var(--text-primary)]"
-                    />
-                  </div>
-                  {showSideDropdown && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-44 overflow-y-auto">
-                      {filteredSide.slice(0, 6).map(r => (
-                        <button
-                          key={r.recipe_id}
-                          type="button"
-                          onMouseDown={() => addSideDish(r)}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-emerald-50 text-left transition-colors"
-                        >
-                          {r.image_url ? (
-                            <img src={r.image_url} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm flex-shrink-0">🍽️</div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-[var(--text-primary)] truncate">{r.name}</p>
-                            <p className="text-xs text-[var(--text-muted)]">{r.category}</p>
-                          </div>
-                          <Plus className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                        </button>
-                      ))}
-                      {filteredSide.length === 0 && (
-                        <div className="px-4 py-3 text-sm text-[var(--text-muted)] text-center">Keine Rezepte gefunden</div>
-                      )}
+                {/* Add side dish search - only when main recipe has configured side dishes */}
+                {allowedSideIds.size > 0 ? (
+                  <div className="relative">
+                    <div className="flex items-center gap-2 border border-dashed border-gray-300 hover:border-emerald-400 focus-within:border-emerald-400 rounded-xl px-3 py-2 bg-white transition-colors">
+                      <Plus className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="Beilage hinzufügen…"
+                        value={sideSearch}
+                        onChange={e => { setSideSearch(e.target.value); setShowSideDropdown(true); }}
+                        onFocus={() => setShowSideDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowSideDropdown(false), 200)}
+                        className="flex-1 text-sm outline-none bg-transparent placeholder:text-gray-400 text-[var(--text-primary)]"
+                        data-testid="side-dish-search-input"
+                      />
                     </div>
-                  )}
-                </div>
+                    {showSideDropdown && (
+                      <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-44 overflow-y-auto">
+                        {filteredSide.slice(0, 6).map(r => (
+                          <button
+                            key={r.recipe_id}
+                            type="button"
+                            onMouseDown={() => addSideDish(r)}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-emerald-50 text-left transition-colors"
+                            data-testid={`side-dish-option-${r.recipe_id}`}
+                          >
+                            {r.image_url ? (
+                              <img src={r.image_url} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm flex-shrink-0">🍽️</div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-[var(--text-primary)] truncate">{r.name}</p>
+                              <p className="text-xs text-[var(--text-muted)]">{r.category}</p>
+                            </div>
+                            <Plus className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                          </button>
+                        ))}
+                        {filteredSide.length === 0 && (
+                          <div className="px-4 py-3 text-sm text-[var(--text-muted)] text-center">
+                            Alle Beilagen bereits hinzugefügt
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    className="text-xs text-[var(--text-muted)] italic px-3 py-2 bg-gray-50 rounded-lg"
+                    data-testid="no-side-dishes-hint"
+                  >
+                    Keine Beilagen am Rezept konfiguriert. Bearbeite das Rezept, um Beilagen hinzuzufügen.
+                  </div>
+                )}
               </div>
             </div>
 
