@@ -15,7 +15,6 @@ import secrets
 import json
 import re
 from datetime import datetime, timezone, timedelta
-from emergentintegrations.llm.chat import LlmChat, UserMessage
 from pywebpush import webpush, WebPushException
 from zoneinfo import ZoneInfo
 import asyncio
@@ -30,41 +29,34 @@ import configparser
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# ============ OBJECT STORAGE ============
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
-APP_NAME = "kochplaner"
-_storage_key = None
+# ============ LOCAL FILE STORAGE ============
+UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", ROOT_DIR / "uploads"))
+UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 
-def init_storage():
-    global _storage_key
-    if _storage_key:
-        return _storage_key
-    resp = sync_requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    _storage_key = resp.json()["storage_key"]
-    return _storage_key
-
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = sync_requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data, timeout=120
-    )
-    resp.raise_for_status()
-    return resp.json()
+    """Store file locally"""
+    file_path = UPLOAD_DIR / path
+    file_path.parent.mkdir(exist_ok=True, parents=True)
+    file_path.write_bytes(data)
+    return {"path": f"/api/uploads/{path}", "size": len(data)}
 
 def get_object(path: str):
-    key = init_storage()
-    resp = sync_requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key}, timeout=60
-    )
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    """Retrieve file from local storage"""
+    file_path = UPLOAD_DIR / path
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+    data = file_path.read_bytes()
+    # Determine content type from extension
+    ext = file_path.suffix.lower()
+    content_type_map = {
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.png': 'image/png', '.webp': 'image/webp',
+        '.gif': 'image/gif'
+    }
+    content_type = content_type_map.get(ext, 'application/octet-stream')
+    return data, content_type
 
 # SMTP Config laden
 SMTP_CONFIG_PATH = Path("/etc/speisenplaner/smtp.conf")
@@ -86,7 +78,12 @@ app = FastAPI()
 # CORS - muss direkt nach App-Erstellung kommen
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://192.168.178.24:3000",
+        os.environ.get("FRONTEND_URL", "http://localhost:3000")
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -409,8 +406,8 @@ async def get_current_user(request: Request) -> User:
 
 # ============ AUTH ENDPOINTS ============
 
-# Check if running in Emergent environment
-IS_EMERGENT = "emergentagent.com" in os.environ.get('CORS_ORIGINS', '')
+# Local self-hosted mode only
+IS_EMERGENT = False
 
 def _is_secure_request(request: Request) -> bool:
     """Detect if request came via HTTPS (direct or behind reverse proxy)"""
@@ -457,14 +454,13 @@ async def register(data: RegisterRequest, request: Request, response: Response):
     session_doc['created_at'] = session_doc['created_at'].isoformat()
     await db.user_sessions.insert_one(session_doc)
     
-    # Set cookie
-    is_secure = _is_secure_request(request)
+    # Set cookie - allow for local network without HTTPS
     response.set_cookie(
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=is_secure,
-        samesite="none" if is_secure else "lax",
+        secure=False,
+        samesite="lax",
         path="/",
         max_age=7 * 24 * 60 * 60
     )
@@ -496,14 +492,13 @@ async def login(data: LoginRequest, request: Request, response: Response):
     session_doc['created_at'] = session_doc['created_at'].isoformat()
     await db.user_sessions.insert_one(session_doc)
     
-    # Set cookie
-    is_secure = _is_secure_request(request)
+    # Set cookie - allow for local network without HTTPS
     response.set_cookie(
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=is_secure,
-        samesite="none" if is_secure else "lax",
+        secure=False,
+        samesite="lax",
         path="/",
         max_age=7 * 24 * 60 * 60
     )
@@ -571,13 +566,13 @@ async def exchange_session(request: Request, response: Response):
     session_doc['created_at'] = session_doc['created_at'].isoformat()
     await db.user_sessions.insert_one(session_doc)
     
-    is_secure = _is_secure_request(request)
+    # Set cookie - allow for local network without HTTPS
     response.set_cookie(
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=is_secure,
-        samesite="none" if is_secure else "lax",
+        secure=False,
+        samesite="lax",
         path="/",
         max_age=7 * 24 * 60 * 60
     )
@@ -955,52 +950,8 @@ def build_recipe_from_jsonld(jsonld: dict) -> dict:
     }
 
 async def parse_with_llm(html: str, url: str) -> Optional[dict]:
-    """Use LLM to extract recipe data from HTML when JSON-LD is unavailable"""
-    try:
-        llm_key = os.environ.get('EMERGENT_LLM_KEY')
-        if not llm_key:
-            return None
-
-        # Clean HTML: remove scripts, styles, nav → plain text
-        clean = re.sub(r'<script[^>]*>.*?</script>', ' ', html, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r'<style[^>]*>.*?</style>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r'<nav[^>]*>.*?</nav>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r'<header[^>]*>.*?</header>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r'<footer[^>]*>.*?</footer>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r'<[^>]+>', ' ', clean)
-        clean = re.sub(r'&[a-z]+;', ' ', clean)
-        clean = re.sub(r'\s+', ' ', clean).strip()
-        clean = clean[:6000]  # Limit tokens
-
-        chat = LlmChat(
-            api_key=llm_key,
-            session_id=f"recipe_import_{uuid.uuid4().hex[:8]}",
-            system_message="""Du bist ein Rezept-Extraktor. Extrahiere Rezeptdaten aus dem gegebenen Text und gib exakt dieses JSON zurück (kein anderer Text):
-{
-  "name": "string",
-  "description": "string oder null",
-  "ingredients": [{"name": "string", "amount": "string", "unit": "string"}],
-  "instructions": ["string"],
-  "portions": number,
-  "prep_time": number_in_minutes_or_null,
-  "cook_time": number_in_minutes_or_null,
-  "difficulty": "leicht|mittel|schwer",
-  "category": "Frühstück|Suppe|Salat|Hauptgericht|Dessert|Snack|Vorspeise|Getränk",
-  "nutrition": {"calories": number_or_null, "protein": number_or_null, "carbs": number_or_null, "fat": number_or_null, "fiber": null}
-}"""
-        ).with_model("openai", "gpt-4.1-mini")
-
-        msg = UserMessage(text=f"Extrahiere das Rezept von dieser URL: {url}\n\nSeitentext:\n{clean}")
-        response = await chat.send_message(msg)
-
-        json_match = re.search(r'\{[\s\S]*\}', response)
-        if json_match:
-            data = json.loads(json_match.group())
-            data.setdefault('allergens', [])
-            data.setdefault('shared_with_group', False)
-            return data
-    except Exception as e:
-        logger.error(f"LLM recipe parse error: {e}")
+    """LLM parsing disabled in self-hosted mode - requires OpenAI API key"""
+    logger.info("LLM parsing not available in self-hosted mode")
     return None
 
 @api_router.post("/recipes/import-preview")
@@ -2112,6 +2063,18 @@ async def root():
 
 # Include the router
 app.include_router(api_router)
+
+# Static file serving for uploads
+from fastapi.responses import FileResponse
+
+@app.get("/api/uploads/{file_path:path}")
+async def serve_upload(file_path: str):
+    """Serve uploaded files"""
+    try:
+        data, content_type = get_object(file_path)
+        return Response(content=data, media_type=content_type)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
 
 @app.on_event("startup")
 async def start_notification_scheduler():

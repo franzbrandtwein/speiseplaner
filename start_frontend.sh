@@ -1,3 +1,4 @@
 #!/bin/bash
-cd "$(dirname "$0")/frontend"
-yarn start
+# Use systemd service instead
+sudo systemctl start speiseplaner-frontend.service
+echo "✅ Frontend started via systemd"

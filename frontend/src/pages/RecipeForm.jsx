@@ -337,7 +337,7 @@ const RecipeForm = () => {
                   onChange={e => updateField("description", e.target.value)}
                   placeholder="Kurze Beschreibung des Gerichts..."
                   className="mt-1"
-                  rows={3}
+                  rows={4}
                   data-testid="recipe-description-input"
                 />
               </div>
@@ -610,7 +610,7 @@ const RecipeForm = () => {
                     onChange={e => updateInstruction(idx, e.target.value)}
                     placeholder={`Schritt ${idx + 1}...`}
                     className="flex-1"
-                    rows={2}
+                    rows={3}
                     data-testid={`instruction-${idx}`}
                   />
                   <Button

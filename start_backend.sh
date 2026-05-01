@@ -1,4 +1,4 @@
 #!/bin/bash
-cd "$(dirname "$0")/backend"
-source venv/bin/activate
-uvicorn server:app --host 0.0.0.0 --port 8001 --reload
+# Use systemd services instead
+sudo systemctl start speiseplaner-backend.service speiseplaner-frontend.service
+echo "✅ Services started via systemd"
