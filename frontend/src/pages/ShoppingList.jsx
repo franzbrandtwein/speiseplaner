@@ -8,31 +8,32 @@ import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import { toast } from "sonner";
 import { 
-  ShoppingCart, ChevronLeft, ChevronRight, Calendar, 
+  ShoppingCart, Calendar, 
   Check, Printer, Share2, Package 
 } from "lucide-react";
-import { format, startOfWeek, addDays, addWeeks, subWeeks } from "date-fns";
-import { de } from "date-fns/locale";
+import { format, addDays } from "date-fns";
+
+const toDateStr = (d) => format(d, "yyyy-MM-dd");
+const defaultFrom = () => addDays(new Date(), 1);
+const defaultTo = () => addDays(new Date(), 7);
 
 const ShoppingList = () => {
-  const [currentWeekStart, setCurrentWeekStart] = useState(
-    startOfWeek(new Date(), { weekStartsOn: 1 })
-  );
+  const [dateFrom, setDateFrom] = useState(toDateStr(defaultFrom()));
+  const [dateTo, setDateTo] = useState(toDateStr(defaultTo()));
   const [shoppingList, setShoppingList] = useState({ items: [], staple_items: [] });
   const [loading, setLoading] = useState(true);
   const [checkedItems, setCheckedItems] = useState({});
 
-  const weekStartStr = format(currentWeekStart, "yyyy-MM-dd");
-
   useEffect(() => {
     fetchShoppingList();
-  }, [weekStartStr]);
+  }, [dateFrom, dateTo]);
 
   const fetchShoppingList = async () => {
+    if (!dateFrom || !dateTo || dateFrom > dateTo) return;
     setLoading(true);
     try {
       const response = await axios.get(
-        `${API}/shopping-list?week_start=${weekStartStr}`, 
+        `${API}/shopping-list?date_from=${dateFrom}&date_to=${dateTo}`,
         { withCredentials: true }
       );
       setShoppingList(response.data);
@@ -45,9 +46,10 @@ const ShoppingList = () => {
     }
   };
 
-  const goToPreviousWeek = () => setCurrentWeekStart(subWeeks(currentWeekStart, 1));
-  const goToNextWeek = () => setCurrentWeekStart(addWeeks(currentWeekStart, 1));
-  const goToCurrentWeek = () => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const resetToDefault = () => {
+    setDateFrom(toDateStr(defaultFrom()));
+    setDateTo(toDateStr(defaultTo()));
+  };
 
   const toggleItem = (key) => {
     setCheckedItems(prev => ({ ...prev, [key]: !prev[key] }));
@@ -81,7 +83,7 @@ const ShoppingList = () => {
     
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Einkaufsliste", text });
+        await navigator.share({ title: `Einkaufsliste ${dateFrom} – ${dateTo}`, text });
       } catch {}
     } else {
       navigator.clipboard.writeText(text);
@@ -131,26 +133,34 @@ const ShoppingList = () => {
           </div>
         </div>
 
-        {/* Week Navigation */}
+        {/* Zeitraum-Auswahl */}
         <Card className="p-4 mb-6 bg-white border-gray-100">
-          <div className="flex items-center justify-between">
-            <Button variant="ghost" onClick={goToPreviousWeek} data-testid="prev-week-button">
-              <ChevronLeft className="w-5 h-5" />
-            </Button>
-            <div className="text-center">
-              <h2 className="font-heading text-lg font-semibold text-[var(--text-primary)]">
-                {format(currentWeekStart, "d. MMMM", { locale: de })} – {format(addDays(currentWeekStart, 6), "d. MMMM yyyy", { locale: de })}
-              </h2>
-              <Button 
-                variant="link" 
-                onClick={goToCurrentWeek}
-                className="text-emerald-600 text-sm p-0 h-auto"
-              >
-                Aktuelle Woche
-              </Button>
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <div className="flex items-center gap-2 flex-1 w-full">
+              <label className="text-sm font-medium text-[var(--text-secondary)] whitespace-nowrap">Von</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="flex-1 border border-gray-200 rounded-md px-3 py-1.5 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
             </div>
-            <Button variant="ghost" onClick={goToNextWeek} data-testid="next-week-button">
-              <ChevronRight className="w-5 h-5" />
+            <div className="flex items-center gap-2 flex-1 w-full">
+              <label className="text-sm font-medium text-[var(--text-secondary)] whitespace-nowrap">Bis</label>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom}
+                onChange={e => setDateTo(e.target.value)}
+                className="flex-1 border border-gray-200 rounded-md px-3 py-1.5 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <Button
+              variant="link"
+              onClick={resetToDefault}
+              className="text-emerald-600 text-sm p-0 h-auto whitespace-nowrap"
+            >
+              Nächste 7 Tage
             </Button>
           </div>
         </Card>

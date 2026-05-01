@@ -1,6 +1,6 @@
 """Shopping list, staple items, categories"""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date as date_type, timedelta
 
 from fastapi import APIRouter, HTTPException, Request, Depends
 
@@ -13,62 +13,59 @@ STAPLE_CATEGORIES = ["Getränke", "Gewürze", "Haushalt", "Hygiene", "Backzutate
 
 
 @router.get("/shopping-list")
-async def get_shopping_list(week_start: str, user: User = Depends(get_current_user)):
+async def get_shopping_list(date_from: str, date_to: str, user: User = Depends(get_current_user)):
+    """Einkaufsliste für einen Zeitraum (date_from bis date_to, je YYYY-MM-DD)."""
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     group_id = user_doc.get("group_id")
 
+    # Alle Wochenpläne laden, die den Zeitraum überschneiden.
+    # Ein Plan mit week_start W deckt W bis W+6 ab.
+    # Überschneidung wenn: week_start <= date_to UND week_start >= date_from - 6 Tage
+    from_dt = date_type.fromisoformat(date_from)
+    to_dt = date_type.fromisoformat(date_to)
+    earliest_week_start = (from_dt - timedelta(days=6)).isoformat()
+
     if group_id:
-        plan = await db.meal_plans.find_one(
-            {"group_id": group_id, "week_start": week_start}, {"_id": 0}
-        )
+        plans = await db.meal_plans.find(
+            {"group_id": group_id, "week_start": {"$gte": earliest_week_start, "$lte": date_to}},
+            {"_id": 0}
+        ).to_list(20)
     else:
-        plan = await db.meal_plans.find_one(
-            {"user_id": user.user_id, "week_start": week_start}, {"_id": 0}
-        )
+        plans = await db.meal_plans.find(
+            {"user_id": user.user_id, "group_id": None,
+             "week_start": {"$gte": earliest_week_start, "$lte": date_to}},
+            {"_id": 0}
+        ).to_list(20)
 
-    if not plan:
-        user_doc_fresh = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
-        group_id_fresh = user_doc_fresh.get("group_id") if user_doc_fresh else group_id
-        staple_query = {"group_id": group_id_fresh, "active": True} if group_id_fresh else {
-            "user_id": user.user_id, "group_id": None, "active": True
-        }
-        staple_items = await db.staple_items.find(staple_query, {"_id": 0}).to_list(500)
-        staple_list = []
-        for si in staple_items:
-            staple_list.append({
-                "item_id": si["item_id"],
-                "ingredient_name": si["name"],
-                "total_amount": str(si["amount"]),
-                "unit": si["unit"],
-                "category": si.get("category", "Sonstiges"),
-                "checked": False,
-                "is_staple": True
-            })
-        return {"items": [], "staple_items": staple_list, "week_start": week_start}
-
+    # Zutaten aus allen Tagen im Zeitraum aggregieren
     recipe_ids = set()
     recipe_portions = {}
 
-    for day in plan.get("days", []):
-        for meal_type in ["breakfast", "lunch", "dinner"]:
-            meals = day.get(meal_type, [])
-            if isinstance(meals, dict):
-                meals = [meals] if meals.get("recipe_id") else []
-            elif meals is None:
-                meals = []
-            for meal in meals:
-                if meal and meal.get("recipe_id"):
-                    rid = meal["recipe_id"]
-                    recipe_ids.add(rid)
-                    portions = meal.get("portions", 2)
-                    recipe_portions[rid] = recipe_portions.get(rid, 0) + portions
-                    for sd in meal.get("side_dishes", []):
-                        if sd.get("recipe_id"):
-                            sd_id = sd["recipe_id"]
-                            sd_portions = sd.get("portions", 2)
-                            recipe_ids.add(sd_id)
-                            recipe_portions[sd_id] = recipe_portions.get(sd_id, 0) + sd_portions
+    for plan in plans:
+        for day in plan.get("days", []):
+            day_date = day.get("date", "")
+            if not (date_from <= day_date <= date_to):
+                continue
+            for meal_type in ["breakfast", "lunch", "dinner"]:
+                meals = day.get(meal_type, [])
+                if isinstance(meals, dict):
+                    meals = [meals] if meals.get("recipe_id") else []
+                elif meals is None:
+                    meals = []
+                for meal in meals:
+                    if meal and meal.get("recipe_id"):
+                        rid = meal["recipe_id"]
+                        recipe_ids.add(rid)
+                        portions = meal.get("portions", 2)
+                        recipe_portions[rid] = recipe_portions.get(rid, 0) + portions
+                        for sd in meal.get("side_dishes", []):
+                            if sd.get("recipe_id"):
+                                sd_id = sd["recipe_id"]
+                                sd_portions = sd.get("portions", 2)
+                                recipe_ids.add(sd_id)
+                                recipe_portions[sd_id] = recipe_portions.get(sd_id, 0) + sd_portions
 
+    # Zutaten berechnen
     ingredients_map = {}
     for recipe_id in recipe_ids:
         recipe = await db.recipes.find_one({"recipe_id": recipe_id}, {"_id": 0})
@@ -103,6 +100,7 @@ async def get_shopping_list(week_start: str, user: User = Depends(get_current_us
             item["total_amount"] = str(round(item["total_amount"], 2))
         items.append(item)
 
+    # Sonstige Artikel laden
     user_doc_fresh = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     group_id_fresh = user_doc_fresh.get("group_id") if user_doc_fresh else group_id
     staple_query = {"group_id": group_id_fresh, "active": True} if group_id_fresh else {
@@ -121,7 +119,7 @@ async def get_shopping_list(week_start: str, user: User = Depends(get_current_us
             "is_staple": True
         })
 
-    return {"items": items, "staple_items": staple_list, "week_start": week_start}
+    return {"items": items, "staple_items": staple_list, "date_from": date_from, "date_to": date_to}
 
 
 @router.post("/shopping-list/toggle")
