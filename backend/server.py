@@ -20,10 +20,12 @@ app = FastAPI()
 # CORS: allow_origins=["*"] + allow_credentials=True is rejected by browsers.
 # Use explicit origins from FRONTEND_URL env var plus common dev origins.
 _frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+_extra_origins = [o.strip() for o in os.environ.get("EXTRA_CORS_ORIGINS", "").split(",") if o.strip()]
 _cors_origins = list({
     _frontend_url,
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    *_extra_origins,
 })
 
 app.add_middleware(
