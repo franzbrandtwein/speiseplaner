@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
@@ -18,7 +18,101 @@ import {
 import { Checkbox } from "../components/ui/checkbox";
 import { Switch } from "../components/ui/switch";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, Save, Image, Upload, Users, Search, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, Upload, Users, Search, X, Check, Sparkles } from "lucide-react";
+
+/** Autocomplete-Eingabefeld für Zutaten mit Stammdaten-Verknüpfung */
+const IngredientNameInput = ({ value, ingredientId, onChange, allIngredients, idx }) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value);
+  const containerRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Sync external value changes (e.g. when editing existing recipe)
+  useEffect(() => { setQuery(value); }, [value]);
+
+  const suggestions = query.trim().length === 0
+    ? allIngredients.slice(0, 8)
+    : allIngredients
+        .filter(i => i.name.toLowerCase().includes(query.toLowerCase()))
+        .slice(0, 8);
+
+  const exactMatch = allIngredients.find(
+    i => i.name.toLowerCase() === query.toLowerCase()
+  );
+
+  const handleSelect = (ingredient) => {
+    setQuery(ingredient.name);
+    onChange(ingredient.name, ingredient.ingredient_id);
+    setOpen(false);
+  };
+
+  const handleInputChange = (e) => {
+    const v = e.target.value;
+    setQuery(v);
+    onChange(v, null); // clear ingredient_id when typing freely
+    setOpen(true);
+  };
+
+  const handleBlur = useCallback(() => {
+    setTimeout(() => {
+      if (containerRef.current && !containerRef.current.contains(document.activeElement)) {
+        setOpen(false);
+      }
+    }, 150);
+  }, []);
+
+  return (
+    <div className="relative w-full sm:flex-1 sm:w-auto" ref={containerRef}>
+      <div className={`flex items-center gap-1.5 border rounded-lg px-3 h-10 bg-white focus-within:ring-1 transition-colors ${
+        ingredientId
+          ? "border-emerald-400 focus-within:ring-emerald-400"
+          : "border-gray-200 focus-within:border-emerald-400 focus-within:ring-emerald-400"
+      }`}>
+        {ingredientId && <Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={handleInputChange}
+          onFocus={() => setOpen(true)}
+          onBlur={handleBlur}
+          placeholder="Zutat"
+          className="flex-1 outline-none text-base bg-transparent text-[var(--text-primary)] placeholder:text-gray-400 min-w-0"
+          data-testid={`ingredient-name-${idx}`}
+        />
+      </div>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full min-w-[200px] bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+          {suggestions.map(ing => (
+            <button
+              key={ing.ingredient_id}
+              type="button"
+              onMouseDown={() => handleSelect(ing)}
+              className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-emerald-50 text-left transition-colors"
+            >
+              <Check className={`w-3.5 h-3.5 flex-shrink-0 ${ing.ingredient_id === ingredientId ? "text-emerald-500" : "text-transparent"}`} />
+              <span className="text-sm text-[var(--text-primary)] truncate">{ing.name}</span>
+              <span className="text-xs text-[var(--text-muted)] ml-auto">{ing.category}</span>
+            </button>
+          ))}
+          {query.trim() && !exactMatch && (
+            <button
+              type="button"
+              onMouseDown={() => { onChange(query.trim(), null); setOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-amber-50 text-left border-t border-gray-100 transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span className="text-sm text-amber-700">Neu anlegen: <strong>{query.trim()}</strong></span>
+            </button>
+          )}
+          {suggestions.length === 0 && !query.trim() && (
+            <div className="px-4 py-3 text-sm text-[var(--text-muted)] text-center">Keine Zutaten vorhanden</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const RecipeForm = () => {
   const { id } = useParams();
@@ -32,6 +126,7 @@ const RecipeForm = () => {
   const [categories, setCategories] = useState({ categories: [], difficulties: [], allergens: [] });
   const [hasGroup, setHasGroup] = useState(false);
   const [allRecipes, setAllRecipes] = useState([]);
+  const [allIngredients, setAllIngredients] = useState([]);
   const [sideDishSearch, setSideDishSearch] = useState("");
   const [showSideDishDropdown, setShowSideDishDropdown] = useState(false);
   const [existingImages, setExistingImages] = useState([]);
@@ -48,7 +143,7 @@ const RecipeForm = () => {
     cook_time: "",
     image_url: "",
     cost_per_portion: "",
-    ingredients: [{ name: "", amount: "", unit: "g" }],
+    ingredients: [{ name: "", amount: "", unit: "g", ingredient_id: null }],
     instructions: [""],
     nutrition: {
       calories: "",
@@ -65,14 +160,16 @@ const RecipeForm = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [catRes, groupRes, recipesRes] = await Promise.all([
+        const [catRes, groupRes, recipesRes, ingredientsRes] = await Promise.all([
           axios.get(`${API}/categories`, { withCredentials: true }),
           axios.get(`${API}/groups/my`, { withCredentials: true }),
           axios.get(`${API}/recipes`, { withCredentials: true }),
+          axios.get(`${API}/ingredients`, { withCredentials: true }),
         ]);
         setCategories(catRes.data);
         setHasGroup(groupRes.data.group !== null);
         setAllRecipes(recipesRes.data || []);
+        setAllIngredients(ingredientsRes.data || []);
         
         if (isEditing) {
           const recipeRes = await axios.get(`${API}/recipes/${id}`, { withCredentials: true });
@@ -139,6 +236,12 @@ const RecipeForm = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const updateIngredientName = (index, name, ingredientId) => {
+    const newIngredients = [...formData.ingredients];
+    newIngredients[index] = { ...newIngredients[index], name, ingredient_id: ingredientId };
+    updateField("ingredients", newIngredients);
+  };
+
   const updateIngredient = (index, field, value) => {
     const newIngredients = [...formData.ingredients];
     newIngredients[index] = { ...newIngredients[index], [field]: value };
@@ -147,7 +250,7 @@ const RecipeForm = () => {
 
   const addIngredient = () => {
     const newIdx = formData.ingredients.length;
-    updateField("ingredients", [...formData.ingredients, { name: "", amount: "", unit: "g" }]);
+    updateField("ingredients", [...formData.ingredients, { name: "", amount: "", unit: "g", ingredient_id: null }]);
     setTimeout(() => {
       const el = document.querySelector(`[data-testid="ingredient-name-${newIdx}"]`);
       if (el) el.focus();
@@ -247,12 +350,50 @@ const RecipeForm = () => {
 
     setSaving(true);
     try {
+      // Zutaten-IDs auflösen: unbekannte Zutaten on-the-fly anlegen
+      const resolvedIngredients = await Promise.all(
+        formData.ingredients
+          .filter(i => i.name.trim())
+          .map(async (ing) => {
+            if (ing.ingredient_id) return ing;
+            try {
+              // Erst lookup versuchen
+              const { data: found } = await axios.get(
+                `${API}/ingredients/lookup?name=${encodeURIComponent(ing.name.trim())}`,
+                { withCredentials: true }
+              );
+              if (found) return { ...ing, ingredient_id: found.ingredient_id };
+              // Nicht gefunden → neu anlegen
+              try {
+                const { data: created } = await axios.post(
+                  `${API}/ingredients`,
+                  { name: ing.name.trim(), category: "Sonstiges", shared_with_group: true },
+                  { withCredentials: true }
+                );
+                return { ...ing, ingredient_id: created.ingredient_id };
+              } catch (postErr) {
+                // 409: existiert doch (Race condition) → nochmal lookup
+                if (postErr.response?.status === 409) {
+                  const { data: retry } = await axios.get(
+                    `${API}/ingredients/lookup?name=${encodeURIComponent(ing.name.trim())}`,
+                    { withCredentials: true }
+                  );
+                  if (retry) return { ...ing, ingredient_id: retry.ingredient_id };
+                }
+                return ing;
+              }
+            } catch {
+              return ing;
+            }
+          })
+      );
+
       const payload = {
         ...formData,
         prep_time: formData.prep_time ? parseInt(formData.prep_time) : null,
         cook_time: formData.cook_time ? parseInt(formData.cook_time) : null,
         cost_per_portion: formData.cost_per_portion ? parseFloat(formData.cost_per_portion) : null,
-        ingredients: formData.ingredients.filter(i => i.name.trim()),
+        ingredients: resolvedIngredients,
         instructions: formData.instructions.filter(i => i.trim()),
         nutrition: {
           calories: formData.nutrition.calories ? parseInt(formData.nutrition.calories) : null,
@@ -538,12 +679,12 @@ const RecipeForm = () => {
             <div className="space-y-3">
               {formData.ingredients.map((ing, idx) => (
                 <div key={idx} className="flex flex-wrap gap-2 items-start">
-                  <Input
+                  <IngredientNameInput
                     value={ing.name}
-                    onChange={e => updateIngredient(idx, "name", e.target.value)}
-                    placeholder="Zutat"
-                    className="w-full sm:flex-1 sm:w-auto input-field text-base"
-                    data-testid={`ingredient-name-${idx}`}
+                    ingredientId={ing.ingredient_id}
+                    onChange={(name, ingredientId) => updateIngredientName(idx, name, ingredientId)}
+                    allIngredients={allIngredients}
+                    idx={idx}
                   />
                   <div className="flex gap-2 items-start flex-1 sm:flex-none">
                     <Input
