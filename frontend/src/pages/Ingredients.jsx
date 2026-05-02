@@ -9,9 +9,6 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "../components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "../components/ui/select";
-import {
   Plus, Pencil, Trash2, Search, X, ChevronDown, ChevronUp,
   ShoppingBag, Globe, UtensilsCrossed, HelpCircle, Package,
 } from "lucide-react";
@@ -62,10 +59,8 @@ export function NutritionBadges({ nutrition, className = "" }) {
 }
 
 // ─── Pack Sizes Editor ────────────────────────────────────────────────────────
-const PACK_UNITS = ["g", "kg", "ml", "l", "Stk.", "EL", "TL", "Prise", "Packung"];
-
 const PackSizeEditor = ({ packs, onChange }) => {
-  const add = () => onChange([...packs, { amount: "", unit: "g", description: "" }]);
+  const add = () => onChange([...packs, { amount: "", unit: "l", description: "" }]);
   const remove = (i) => onChange(packs.filter((_, idx) => idx !== i));
   const update = (i, k, v) => onChange(packs.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
 
@@ -74,22 +69,16 @@ const PackSizeEditor = ({ packs, onChange }) => {
       {packs.map((p, i) => (
         <div key={i} className="flex gap-2 items-center">
           <Input
-            placeholder="500"
+            placeholder="1.5"
             value={p.amount}
             onChange={e => update(i, "amount", e.target.value)}
-            className="w-20"
+            className="w-24"
             type="number"
+            step="0.01"
           />
-          <Select value={p.unit} onValueChange={v => update(i, "unit", v)}>
-            <SelectTrigger className="w-20">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PACK_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <span className="text-sm font-medium text-gray-600 w-6">l</span>
           <Input
-            placeholder="Tüte, Dose …"
+            placeholder="Flasche, Kanister …"
             value={p.description}
             onChange={e => update(i, "description", e.target.value)}
             className="flex-1"
@@ -178,14 +167,8 @@ const IngredientDialog = ({ open, onClose, onSave, initial, sources }) => {
     });
 
     const packs = form.pack_sizes
-      .filter(p => p.amount && p.unit)
-      .map(p => {
-        // Normalisierung alter Freitexteingaben
-        let unit = p.unit.trim();
-        const unitMap = { "liter": "l", "Liter": "l", "litre": "l", "gram": "g", "gramm": "g", "kilogramm": "kg", "milliliter": "ml" };
-        unit = unitMap[unit] ?? unit;
-        return { amount: parseFloat(p.amount), unit, description: p.description || "" };
-      });
+      .filter(p => p.amount)
+      .map(p => ({ amount: parseFloat(p.amount), unit: "l", description: p.description || "" }));
 
     onSave({
       name: form.name.trim(),
