@@ -822,7 +822,7 @@ const MealPlanner = () => {
     // Nährwerte pro Rezept laden (parallel, Fehler ignorieren)
     const results = await Promise.all(
       [...recipeIds].map(rid =>
-        axios.get(`${API}/api/recipes/${rid}/nutrition`, { withCredentials: true })
+        axios.get(`${API}/recipes/${rid}/nutrition`, { withCredentials: true })
           .then(r => [rid, r.data])
           .catch(() => null)
       )

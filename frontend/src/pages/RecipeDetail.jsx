@@ -47,7 +47,7 @@ const RecipeDetail = () => {
   const fetchNutrition = useCallback(async (recipeId) => {
     setNutritionLoading(true);
     try {
-      const { data } = await axios.get(`${API}/api/recipes/${recipeId}/nutrition`, { withCredentials: true });
+      const { data } = await axios.get(`${API}/recipes/${recipeId}/nutrition`, { withCredentials: true });
       // Nur anzeigen wenn mindestens Kalorien bekannt
       if (data.total?.calories != null) setNutrition(data);
     } catch {

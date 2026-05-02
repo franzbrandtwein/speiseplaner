@@ -113,7 +113,7 @@ export default function Sources() {
 
   const load = useCallback(async () => {
     try {
-      const { data } = await axios.get(`${API}/api/sources`, { withCredentials: true });
+      const { data } = await axios.get(`${API}/sources`, { withCredentials: true });
       setSources(data);
     } catch {
       toast.error("Bezugsquellen konnten nicht geladen werden");
@@ -127,11 +127,11 @@ export default function Sources() {
   const handleSave = async (form) => {
     try {
       if (editSource) {
-        const { data } = await axios.put(`${API}/api/sources/${editSource.source_id}`, form, { withCredentials: true });
+        const { data } = await axios.put(`${API}/sources/${editSource.source_id}`, form, { withCredentials: true });
         setSources(prev => prev.map(s => s.source_id === editSource.source_id ? data : s));
         toast.success("Bezugsquelle aktualisiert");
       } else {
-        const { data } = await axios.post(`${API}/api/sources`, form, { withCredentials: true });
+        const { data } = await axios.post(`${API}/sources`, form, { withCredentials: true });
         setSources(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
         toast.success("Bezugsquelle erstellt");
       }
@@ -145,7 +145,7 @@ export default function Sources() {
   const handleDelete = async (source) => {
     if (!window.confirm(`„${source.name}" wirklich löschen?`)) return;
     try {
-      await axios.delete(`${API}/api/sources/${source.source_id}`, { withCredentials: true });
+      await axios.delete(`${API}/sources/${source.source_id}`, { withCredentials: true });
       setSources(prev => prev.filter(s => s.source_id !== source.source_id));
       toast.success("Bezugsquelle gelöscht");
     } catch {

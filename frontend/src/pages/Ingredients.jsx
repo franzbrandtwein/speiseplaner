@@ -373,8 +373,8 @@ export default function Ingredients() {
   const load = useCallback(async () => {
     try {
       const [itemsRes, sourcesRes] = await Promise.all([
-        axios.get(`${API}/api/ingredients`, { withCredentials: true }),
-        axios.get(`${API}/api/sources`, { withCredentials: true }),
+        axios.get(`${API}/ingredients`, { withCredentials: true }),
+        axios.get(`${API}/sources`, { withCredentials: true }),
       ]);
       setItems(itemsRes.data);
       setSources(sourcesRes.data);
@@ -390,11 +390,11 @@ export default function Ingredients() {
   const handleSave = async (form) => {
     try {
       if (editItem) {
-        const { data } = await axios.put(`${API}/api/ingredients/${editItem.ingredient_id}`, form, { withCredentials: true });
+        const { data } = await axios.put(`${API}/ingredients/${editItem.ingredient_id}`, form, { withCredentials: true });
         setItems(prev => prev.map(i => i.ingredient_id === editItem.ingredient_id ? data : i));
         toast.success("Zutat aktualisiert");
       } else {
-        const { data } = await axios.post(`${API}/api/ingredients`, form, { withCredentials: true });
+        const { data } = await axios.post(`${API}/ingredients`, form, { withCredentials: true });
         setItems(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
         toast.success("Zutat erstellt");
       }
@@ -408,7 +408,7 @@ export default function Ingredients() {
   const handleDelete = async (item) => {
     if (!window.confirm(`„${item.name}" wirklich löschen?`)) return;
     try {
-      await axios.delete(`${API}/api/ingredients/${item.ingredient_id}`, { withCredentials: true });
+      await axios.delete(`${API}/ingredients/${item.ingredient_id}`, { withCredentials: true });
       setItems(prev => prev.filter(i => i.ingredient_id !== item.ingredient_id));
       toast.success("Zutat gelöscht");
     } catch {
