@@ -17,9 +17,9 @@ UNIT_TO_G = {
 
 
 def _scope_query(user) -> dict:
-    if user.get("group_id"):
-        return {"$or": [{"group_id": user["group_id"]}, {"user_id": user["user_id"], "group_id": None}]}
-    return {"user_id": user["user_id"], "group_id": None}
+    if user.group_id:
+        return {"$or": [{"group_id": user.group_id}, {"user_id": user.user_id, "group_id": None}]}
+    return {"user_id": user.user_id, "group_id": None}
 
 
 def _to_grams(amount_str: str, unit: str) -> Optional[float]:
@@ -98,8 +98,8 @@ async def create_ingredient(data: IngredientMasterCreate, user=Depends(get_curre
 
     doc = {
         "ingredient_id": f"ingr_{uuid.uuid4().hex[:12]}",
-        "user_id": user["user_id"],
-        "group_id": user.get("group_id"),
+        "user_id": user.user_id,
+        "group_id": user.group_id,
         "name": data.name,
         "category": data.category,
         "nutrition_per_100g": data.nutrition_per_100g.model_dump() if data.nutrition_per_100g else None,

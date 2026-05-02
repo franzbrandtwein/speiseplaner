@@ -9,9 +9,9 @@ router = APIRouter()
 
 
 def _scope_query(user) -> dict:
-    if user.get("group_id"):
-        return {"$or": [{"group_id": user["group_id"]}, {"user_id": user["user_id"], "group_id": None}]}
-    return {"user_id": user["user_id"], "group_id": None}
+    if user.group_id:
+        return {"$or": [{"group_id": user.group_id}, {"user_id": user.user_id, "group_id": None}]}
+    return {"user_id": user.user_id, "group_id": None}
 
 
 @router.get("/api/sources")
@@ -25,8 +25,8 @@ async def list_sources(user=Depends(get_current_user)):
 async def create_source(data: SourceCreate, user=Depends(get_current_user)):
     doc = {
         "source_id": f"source_{uuid.uuid4().hex[:12]}",
-        "user_id": user["user_id"],
-        "group_id": user.get("group_id"),
+        "user_id": user.user_id,
+        "group_id": user.group_id,
         **data.model_dump(),
     }
     await db.sources.insert_one(doc)
