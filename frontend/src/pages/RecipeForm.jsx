@@ -351,15 +351,17 @@ const RecipeForm = () => {
     setSaving(true);
     try {
       // Zutaten-IDs auflösen: unbekannte Zutaten on-the-fly anlegen
+      const newlyCreated = [];
       const resolvedIngredients = await Promise.all(
         formData.ingredients
           .filter(i => i.name.trim())
           .map(async (ing) => {
             if (ing.ingredient_id) return ing;
+            const name = ing.name.trim();
             try {
               // Erst lookup versuchen
               const { data: found } = await axios.get(
-                `${API}/ingredients/lookup?name=${encodeURIComponent(ing.name.trim())}`,
+                `${API}/ingredients/lookup?name=${encodeURIComponent(name)}`,
                 { withCredentials: true }
               );
               if (found) return { ...ing, ingredient_id: found.ingredient_id };
@@ -367,26 +369,34 @@ const RecipeForm = () => {
               try {
                 const { data: created } = await axios.post(
                   `${API}/ingredients`,
-                  { name: ing.name.trim(), category: "Sonstiges", shared_with_group: true },
+                  { name, category: "Sonstiges", shared_with_group: true },
                   { withCredentials: true }
                 );
+                newlyCreated.push(name);
                 return { ...ing, ingredient_id: created.ingredient_id };
               } catch (postErr) {
                 // 409: existiert doch (Race condition) → nochmal lookup
                 if (postErr.response?.status === 409) {
                   const { data: retry } = await axios.get(
-                    `${API}/ingredients/lookup?name=${encodeURIComponent(ing.name.trim())}`,
+                    `${API}/ingredients/lookup?name=${encodeURIComponent(name)}`,
                     { withCredentials: true }
                   );
                   if (retry) return { ...ing, ingredient_id: retry.ingredient_id };
                 }
+                const errMsg = postErr.response?.data?.detail || postErr.message;
+                toast.warning(`Zutat "${name}" konnte nicht angelegt werden: ${errMsg}`);
                 return ing;
               }
-            } catch {
+            } catch (lookupErr) {
+              console.error("Lookup-Fehler für", name, lookupErr);
+              toast.warning(`Zutat "${name}" konnte nicht verknüpft werden`);
               return ing;
             }
           })
       );
+      if (newlyCreated.length > 0) {
+        setAllIngredients(prev => [...prev, ...newlyCreated.map(n => ({ name: n, ingredient_id: "", category: "Sonstiges" }))]);
+      }
 
       const payload = {
         ...formData,
