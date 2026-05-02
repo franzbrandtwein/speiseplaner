@@ -72,7 +72,7 @@ async def get_shopping_list(date_from: str, date_to: str, user: User = Depends(g
     for recipe_id in recipe_ids:
         recipe = await db.recipes.find_one({"recipe_id": recipe_id}, {"_id": 0})
         if recipe:
-            recipe_name = recipe.get("title", recipe_id)
+            recipe_name = recipe.get("name", recipe_id)
             recipe_names[recipe_id] = recipe_name
             base_portions = recipe.get("portions", 4)
             multiplier = recipe_portions[recipe_id] / base_portions
