@@ -585,7 +585,7 @@ const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, onAddMeal, 
             className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
             data-testid="detail-clear-all-btn"
           >
-            <X className="w-4 h-4" /> Alle
+            <X className="w-4 h-4" /> Löschen
           </Button>
         </div>
       </DialogContent>
