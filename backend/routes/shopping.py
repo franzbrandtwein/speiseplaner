@@ -53,7 +53,7 @@ async def get_shopping_list(date_from: str, date_to: str, user: User = Depends(g
                 elif meals is None:
                     meals = []
                 for meal in meals:
-                    if meal and meal.get("recipe_id"):
+                    if meal and meal.get("recipe_id") and not meal.get("is_external"):
                         rid = meal["recipe_id"]
                         recipe_ids.add(rid)
                         portions = meal.get("portions", 2)

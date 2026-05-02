@@ -1,7 +1,7 @@
 """Speisekammer (Pantry): Vorratsverwaltung mit automatischer Einbuchung aus der Einkaufsliste"""
 import uuid
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api")
 
 
 class ConsumeEntry(BaseModel):
-    recipe_id: str
+    recipe_id: Optional[str] = None
     portions: int = 2
 
 
@@ -130,6 +130,8 @@ async def consume_from_pantry(data: ConsumeRequest, user: User = Depends(get_cur
     units: dict[str, str] = {}
 
     for entry in data.meals:
+        if not entry.recipe_id:
+            continue  # Externes Gericht – keine Zutaten
         recipe = await db.recipes.find_one({"recipe_id": entry.recipe_id}, {"_id": 0})
         if not recipe:
             continue

@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import {
   ChevronLeft, ChevronRight, Plus, X, Save, ShoppingCart,
   Coffee, UtensilsCrossed, Moon, ChefHat, ArrowLeft,
-  Search, Minus, GripVertical, Users, Copy, BookTemplate, Bookmark, CookingPot
+  Search, Minus, GripVertical, Users, Copy, BookTemplate, Bookmark, CookingPot, Store
 } from "lucide-react";
 import { format, startOfWeek, addDays, addWeeks, subWeeks } from "date-fns";
 import { de } from "date-fns/locale";
@@ -23,7 +23,7 @@ import { Link } from "react-router-dom";
 
 // ─── Slot Configuration Dialog ───────────────────────────────────────────────
 const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, groupMembers = [] }) => {
-  const [phase, setPhase] = useState("pick"); // "pick" | "configure"
+  const [phase, setPhase] = useState("pick"); // "pick" | "configure" | "external"
   const [mainRecipe, setMainRecipe] = useState(null);
   const [mainPortions, setMainPortions] = useState(2);
   const [sideDishes, setSideDishes] = useState([]);
@@ -31,10 +31,14 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
   const [mainSearch, setMainSearch] = useState("");
   const [sideSearch, setSideSearch] = useState("");
   const [showSideDropdown, setShowSideDropdown] = useState(false);
+  const [externalName, setExternalName] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    if (initialSlot?.recipe_id) {
+    if (initialSlot?.is_external) {
+      setExternalName(initialSlot.recipe_name || "");
+      setPhase("external");
+    } else if (initialSlot?.recipe_id) {
       const recipe = recipes.find(r => r.recipe_id === initialSlot.recipe_id);
       setMainRecipe(recipe || { recipe_id: initialSlot.recipe_id, name: initialSlot.recipe_name });
       setMainPortions(initialSlot.portions || 2);
@@ -46,6 +50,7 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
       setMainPortions(2);
       setSideDishes([]);
       setAssignedTo([]);
+      setExternalName("");
       setPhase("pick");
     }
     setMainSearch("");
@@ -87,6 +92,19 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
   };
 
   const handleConfirm = () => {
+    if (phase === "external") {
+      if (!externalName.trim()) return;
+      onConfirm({
+        recipe_id: null,
+        recipe_name: externalName.trim(),
+        portions: 0,
+        side_dishes: [],
+        assigned_to: assignedTo,
+        is_external: true,
+      });
+      onClose();
+      return;
+    }
     if (!mainRecipe) return;
     onConfirm({
       recipe_id: mainRecipe.recipe_id,
@@ -94,6 +112,7 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
       portions: mainPortions,
       side_dishes: sideDishes,
       assigned_to: assignedTo,
+      is_external: false,
     });
     onClose();
   };
@@ -135,7 +154,7 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
       <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="font-heading text-xl flex items-center gap-2">
-            {phase === "configure" && (
+            {(phase === "configure" || phase === "external") && (
               <button
                 onClick={() => setPhase("pick")}
                 className="p-1 rounded-lg hover:bg-gray-100 mr-1"
@@ -143,7 +162,7 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
                 <ArrowLeft className="w-4 h-4" />
               </button>
             )}
-            {phase === "pick" ? "Rezept auswählen" : "Mahlzeit konfigurieren"}
+            {phase === "pick" ? "Rezept auswählen" : phase === "external" ? "Außer Haus" : "Mahlzeit konfigurieren"}
           </DialogTitle>
         </DialogHeader>
 
@@ -209,6 +228,35 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
                 ))
               )}
             </div>
+            {/* Außer Haus Button */}
+            <button
+              onClick={() => { setExternalName(""); setPhase("external"); }}
+              className="flex items-center gap-2 w-full px-4 py-3 rounded-xl border-2 border-dashed border-amber-300 text-amber-600 hover:bg-amber-50 transition-colors font-medium"
+            >
+              <Store className="w-4 h-4" />
+              Außer Haus (Restaurant, Imbiss …)
+            </button>
+          </div>
+        )}
+
+        {/* ── Phase: Außer Haus ── */}
+        {phase === "external" && (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-gray-500">Kein Rezept – z.&nbsp;B. Restaurant oder Imbiss.</p>
+            <Input
+              placeholder="Beschreibung (z. B. Pizzeria, Döner …)"
+              value={externalName}
+              onChange={e => setExternalName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleConfirm()}
+              autoFocus
+            />
+            <Button
+              onClick={handleConfirm}
+              disabled={!externalName.trim()}
+              className="bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              Speichern
+            </Button>
           </div>
         )}
 
@@ -432,6 +480,8 @@ const SlotConfigDialog = ({ open, onClose, onConfirm, initialSlot, recipes, grou
 // ─── Slot Cell (Compact) ──────────────────────────────────────────────────────
 const SlotCell = ({ meals, totalPortions, onOpen, dateStr, mealKey, onDragStart, onDragOver, onDrop, onDragLeave, isDragOver, isMoveSource, isMoving, onMoveStart }) => {
   const isEmpty = !meals || meals.length === 0;
+  const isAllExternal = !isEmpty && meals.every(m => m.is_external);
+  const hasExternal = !isEmpty && meals.some(m => m.is_external);
 
   if (isEmpty) {
     return (
@@ -487,8 +537,8 @@ const SlotCell = ({ meals, totalPortions, onOpen, dateStr, mealKey, onDragStart,
       >
         <GripVertical className="w-5 h-5" />
       </button>
-      <span className="text-sm font-bold text-emerald-700 flex-shrink-0" data-testid={`portions-badge-${dateStr}-${mealKey}`}>
-        {totalPortions}
+      <span className={`text-sm font-bold flex-shrink-0 ${isAllExternal ? "text-amber-600" : "text-emerald-700"}`} data-testid={`portions-badge-${dateStr}-${mealKey}`}>
+        {isAllExternal ? <Store className="w-4 h-4" /> : totalPortions}
       </span>
       {meals.length > 1 && (
         <span className="text-[10px] text-gray-400">{meals.length}x</span>
@@ -514,9 +564,13 @@ const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, onAddMeal, 
 
         <div className="flex-1 overflow-y-auto space-y-3 pr-1">
           {meals.map((meal, index) => (
-            <div key={`${meal.recipe_id}-${index}`} className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+            <div key={`${meal.recipe_id || meal.recipe_name}-${index}`} className={`border rounded-xl p-3 ${meal.is_external ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
               <div className="flex items-center gap-3 mb-2">
-                {(() => {
+                {meal.is_external ? (
+                  <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <Store className="w-5 h-5 text-amber-500" />
+                  </div>
+                ) : (() => {
                   const r = recipes?.find(r => r.recipe_id === meal.recipe_id);
                   return r?.image_url ? (
                     <img src={r.image_url} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
@@ -527,11 +581,15 @@ const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, onAddMeal, 
                   );
                 })()}
                 <div className="flex-1 min-w-0">
-                  <Link to={`/recipes/${meal.recipe_id}`} className="font-semibold text-sm text-[var(--text-primary)] hover:text-emerald-700 truncate block">
-                    {meal.recipe_name}
-                  </Link>
+                  {meal.is_external ? (
+                    <span className="font-semibold text-sm text-amber-800 truncate block">{meal.recipe_name}</span>
+                  ) : (
+                    <Link to={`/recipes/${meal.recipe_id}`} className="font-semibold text-sm text-[var(--text-primary)] hover:text-emerald-700 truncate block">
+                      {meal.recipe_name}
+                    </Link>
+                  )}
                   {meal.assigned_to?.length > 0 && (
-                    <p className="text-xs text-emerald-600">{meal.assigned_to.join(", ")}</p>
+                    <p className={`text-xs ${meal.is_external ? "text-amber-600" : "text-emerald-600"}`}>{meal.assigned_to.join(", ")}</p>
                   )}
                 </div>
                 <button
@@ -542,6 +600,7 @@ const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, onAddMeal, 
                   <X className="w-4 h-4" />
                 </button>
               </div>
+              {!meal.is_external && (<>
               {/* Portions */}
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xs text-[var(--text-muted)]">Portionen:</span>
@@ -570,6 +629,7 @@ const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, onAddMeal, 
                   ))}
                 </div>
               )}
+              </>)}
             </div>
           ))}
         </div>

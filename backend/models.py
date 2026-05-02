@@ -109,6 +109,7 @@ class MealSlot(BaseModel):
     portions: int = 2
     side_dishes: List[SideDishEntry] = []
     assigned_to: List[str] = []
+    is_external: bool = False  # Außer-Haus-Gericht (Imbiss, Restaurant etc.)
 
 
 class DayPlan(BaseModel):
