@@ -21,9 +21,10 @@ import { toast } from "sonner";
 import { ArrowLeft, Plus, Trash2, Save, Upload, Users, Search, X, Check, Sparkles } from "lucide-react";
 
 /** Autocomplete-Eingabefeld für Zutaten mit Stammdaten-Verknüpfung */
-const IngredientNameInput = ({ value, ingredientId, onChange, allIngredients, idx }) => {
+const IngredientNameInput = ({ value, ingredientId, onChange, onCreateNew, allIngredients, idx }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
+  const [creating, setCreating] = useState(false);
   const containerRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -53,6 +54,19 @@ const IngredientNameInput = ({ value, ingredientId, onChange, allIngredients, id
     setOpen(true);
   };
 
+  const handleCreateNew = async () => {
+    const name = query.trim();
+    if (!name) return;
+    setCreating(true);
+    setOpen(false);
+    const created = await onCreateNew(name);
+    setCreating(false);
+    if (created) {
+      setQuery(created.name);
+      onChange(created.name, created.ingredient_id);
+    }
+  };
+
   const handleBlur = useCallback(() => {
     setTimeout(() => {
       if (containerRef.current && !containerRef.current.contains(document.activeElement)) {
@@ -68,7 +82,10 @@ const IngredientNameInput = ({ value, ingredientId, onChange, allIngredients, id
           ? "border-emerald-400 focus-within:ring-emerald-400"
           : "border-gray-200 focus-within:border-emerald-400 focus-within:ring-emerald-400"
       }`}>
-        {ingredientId && <Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
+        {creating
+          ? <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          : ingredientId && <Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+        }
         <input
           ref={inputRef}
           value={query}
@@ -98,7 +115,7 @@ const IngredientNameInput = ({ value, ingredientId, onChange, allIngredients, id
           {query.trim() && !exactMatch && (
             <button
               type="button"
-              onMouseDown={() => { onChange(query.trim(), null); setOpen(false); }}
+              onMouseDown={handleCreateNew}
               className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-amber-50 text-left border-t border-gray-100 transition-colors"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
@@ -242,6 +259,39 @@ const RecipeForm = () => {
     updateField("ingredients", newIngredients);
   };
 
+  const handleCreateIngredient = useCallback(async (name) => {
+    try {
+      const { data: found } = await axios.get(
+        `${API}/ingredients/lookup?name=${encodeURIComponent(name)}`,
+        { withCredentials: true }
+      );
+      if (found) {
+        toast.info(`"${found.name}" bereits in Stammdaten vorhanden`);
+        setAllIngredients(prev => prev.some(i => i.ingredient_id === found.ingredient_id) ? prev : [...prev, found]);
+        return found;
+      }
+      const { data: created } = await axios.post(
+        `${API}/ingredients`,
+        { name, category: "Sonstiges", shared_with_group: true },
+        { withCredentials: true }
+      );
+      setAllIngredients(prev => [...prev, created]);
+      toast.success(`Zutat "${name}" in Stammdaten angelegt`);
+      return created;
+    } catch (err) {
+      if (err.response?.status === 409) {
+        const { data: retry } = await axios.get(
+          `${API}/ingredients/lookup?name=${encodeURIComponent(name)}`,
+          { withCredentials: true }
+        );
+        if (retry) return retry;
+      }
+      const msg = err.response?.data?.detail || err.message;
+      toast.error(`Fehler beim Anlegen von "${name}": ${msg}`);
+      return null;
+    }
+  }, []);
+
   const updateIngredient = (index, field, value) => {
     const newIngredients = [...formData.ingredients];
     newIngredients[index] = { ...newIngredients[index], [field]: value };
@@ -350,60 +400,28 @@ const RecipeForm = () => {
 
     setSaving(true);
     try {
-      // Zutaten-IDs auflösen: unbekannte Zutaten on-the-fly anlegen
-      const newlyCreated = [];
+      // Fallback: Zutaten ohne ingredient_id per Name nachschlagen (z.B. Altdaten)
       const resolvedIngredients = await Promise.all(
         formData.ingredients
           .filter(i => i.name.trim())
           .map(async (ing) => {
-            if (ing.ingredient_id) {
-              console.log("[Zutat] Bereits verknüpft:", ing.name, ing.ingredient_id);
-              return ing;
-            }
+            if (ing.ingredient_id) return ing;
             const name = ing.name.trim();
-            console.log("[Zutat] Lookup für:", name);
             try {
               const { data: found } = await axios.get(
                 `${API}/ingredients/lookup?name=${encodeURIComponent(name)}`,
                 { withCredentials: true }
               );
-              console.log("[Zutat] Lookup-Ergebnis:", found);
               if (found) return { ...ing, ingredient_id: found.ingredient_id };
-              // Nicht gefunden → neu anlegen
-              console.log("[Zutat] Neu anlegen:", name);
-              try {
-                const { data: created } = await axios.post(
-                  `${API}/ingredients`,
-                  { name, category: "Sonstiges", shared_with_group: true },
-                  { withCredentials: true }
-                );
-                console.log("[Zutat] Angelegt:", created);
-                newlyCreated.push(created);
-                return { ...ing, ingredient_id: created.ingredient_id };
-              } catch (postErr) {
-                console.error("[Zutat] POST-Fehler:", postErr.response?.data, postErr);
-                if (postErr.response?.status === 409) {
-                  const { data: retry } = await axios.get(
-                    `${API}/ingredients/lookup?name=${encodeURIComponent(name)}`,
-                    { withCredentials: true }
-                  );
-                  if (retry) return { ...ing, ingredient_id: retry.ingredient_id };
-                }
-                const errMsg = postErr.response?.data?.detail || postErr.message;
-                toast.warning(`Zutat "${name}" konnte nicht angelegt werden: ${errMsg}`);
-                return ing;
-              }
-            } catch (lookupErr) {
-              console.error("[Zutat] Lookup-Fehler:", name, lookupErr);
-              toast.warning(`Zutat "${name}" konnte nicht verknüpft werden`);
-              return ing;
+              // Noch nicht angelegt (Nutzer hat "Neu anlegen" nicht geklickt)
+              const resolved = await handleCreateIngredient(name);
+              if (resolved) return { ...ing, ingredient_id: resolved.ingredient_id };
+            } catch {
+              // Fehler ignorieren – Rezept trotzdem speichern
             }
+            return ing;
           })
       );
-      if (newlyCreated.length > 0) {
-        toast.success(`${newlyCreated.length} neue Zutat(en) in Stammdaten angelegt`);
-        setAllIngredients(prev => [...prev, ...newlyCreated]);
-      }
 
       const payload = {
         ...formData,
@@ -722,6 +740,7 @@ const RecipeForm = () => {
                     value={ing.name}
                     ingredientId={ing.ingredient_id}
                     onChange={(name, ingredientId) => updateIngredientName(idx, name, ingredientId)}
+                    onCreateNew={handleCreateIngredient}
                     allIngredients={allIngredients}
                     idx={idx}
                   />
