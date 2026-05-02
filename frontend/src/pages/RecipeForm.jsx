@@ -418,7 +418,28 @@ const RecipeForm = () => {
       navigate(`/recipes/${id}`);
     } catch (error) {
       console.error("Error saving recipe:", error);
-      toast.error("Fehler beim Speichern");
+      // Backend-Fehlermeldung auswerten (FastAPI 422 / 400 / 500)
+      const detail = error.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        // Pydantic-Validierungsfehler: Array von {loc, msg, type}
+        const messages = detail.map(d => {
+          const field = d.loc?.slice(1).join(" → ") || "";
+          return field ? `${field}: ${d.msg}` : d.msg;
+        });
+        toast.error(`Validierungsfehler:\n${messages.join("\n")}`);
+      } else if (typeof detail === "string") {
+        toast.error(detail);
+      } else if (error.response?.status === 422) {
+        toast.error("Ungültige Eingabe – bitte alle Felder prüfen");
+      } else if (error.response?.status === 401) {
+        toast.error("Nicht angemeldet – bitte neu einloggen");
+      } else if (error.response?.status === 403) {
+        toast.error("Keine Berechtigung zum Speichern");
+      } else if (error.response?.status >= 500) {
+        toast.error("Serverfehler – bitte später erneut versuchen");
+      } else {
+        toast.error("Fehler beim Speichern");
+      }
     } finally {
       setSaving(false);
     }
