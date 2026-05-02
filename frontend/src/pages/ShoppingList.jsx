@@ -9,7 +9,7 @@ import { Checkbox } from "../components/ui/checkbox";
 import { toast } from "sonner";
 import { 
   ShoppingCart, Calendar, 
-  Check, Printer, Share2, Package 
+  Check, Printer, Share2, Package, UtensilsCrossed, List
 } from "lucide-react";
 import { format, addDays } from "date-fns";
 
@@ -20,9 +20,10 @@ const defaultTo = () => addDays(new Date(), 7);
 const ShoppingList = () => {
   const [dateFrom, setDateFrom] = useState(toDateStr(defaultFrom()));
   const [dateTo, setDateTo] = useState(toDateStr(defaultTo()));
-  const [shoppingList, setShoppingList] = useState({ items: [], staple_items: [] });
+  const [shoppingList, setShoppingList] = useState({ items: [], staple_items: [], by_recipe: [] });
   const [loading, setLoading] = useState(true);
   const [checkedItems, setCheckedItems] = useState({});
+  const [groupByRecipe, setGroupByRecipe] = useState(false);
 
   useEffect(() => {
     fetchShoppingList();
@@ -69,10 +70,17 @@ const ShoppingList = () => {
     }
   };
 
-  const allItems = [
-    ...(shoppingList.items || []).map(i => ({ ...i, key: `recipe_${i.ingredient_name}` })),
-    ...(shoppingList.staple_items || []).map(i => ({ ...i, key: `staple_${i.item_id}` })),
-  ];
+  const allItems = groupByRecipe
+    ? [
+        ...((shoppingList.by_recipe || []).flatMap(g =>
+          g.items.map(i => ({ ...i, key: `dish_${g.recipe_id}_${i.ingredient_name}` }))
+        )),
+        ...(shoppingList.staple_items || []).map(i => ({ ...i, key: `staple_${i.item_id}` })),
+      ]
+    : [
+        ...(shoppingList.items || []).map(i => ({ ...i, key: `recipe_${i.ingredient_name}` })),
+        ...(shoppingList.staple_items || []).map(i => ({ ...i, key: `staple_${i.item_id}` })),
+      ];
   const checkedCount = Object.values(checkedItems).filter(Boolean).length;
   const totalCount = allItems.length;
 
@@ -133,6 +141,14 @@ const ShoppingList = () => {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant={groupByRecipe ? "default" : "outline"}
+              onClick={() => setGroupByRecipe(g => !g)}
+              className={groupByRecipe ? "btn-primary" : "btn-secondary"}
+              title="Nach Gericht gruppieren"
+            >
+              {groupByRecipe ? <List className="w-4 h-4" /> : <UtensilsCrossed className="w-4 h-4" />}
+            </Button>
             <Button variant="outline" onClick={handlePrint} className="btn-secondary">
               <Printer className="w-4 h-4" />
             </Button>
@@ -221,8 +237,8 @@ const ShoppingList = () => {
           </Card>
         ) : (
           <div className="space-y-6">
-            {/* Recipe Ingredients */}
-            {hasRecipeItems && (
+            {/* Rezept-Zutaten: flach oder nach Gericht */}
+            {hasRecipeItems && !groupByRecipe && (
               <Card className="bg-white border-gray-100 overflow-hidden" data-testid="recipe-ingredients-section">
                 <div className="px-6 py-3 bg-gray-50 border-b border-gray-100">
                   <div className="flex items-center gap-2">
@@ -267,7 +283,56 @@ const ShoppingList = () => {
               </Card>
             )}
 
-            {/* Staple Items */}
+            {/* Nach Gericht gruppierte Ansicht */}
+            {groupByRecipe && (shoppingList.by_recipe || []).length > 0 && (
+              <div className="space-y-4">
+                {(shoppingList.by_recipe || []).map(group => (
+                  <Card key={group.recipe_id} className="bg-white border-gray-100 overflow-hidden">
+                    <div className="px-6 py-3 bg-emerald-50 border-b border-emerald-100">
+                      <div className="flex items-center gap-2">
+                        <UtensilsCrossed className="w-4 h-4 text-emerald-600" />
+                        <h3 className="font-heading font-semibold text-sm text-[var(--text-primary)]">
+                          {group.recipe_name}
+                        </h3>
+                        <span className="text-xs text-[var(--text-muted)]">
+                          ({group.items.length} Zutaten)
+                        </span>
+                      </div>
+                    </div>
+                    <ul className="divide-y divide-gray-50">
+                      {group.items.map((item, idx) => {
+                        const key = `dish_${group.recipe_id}_${item.ingredient_name}`;
+                        const isChecked = checkedItems[key];
+                        return (
+                          <li
+                            key={idx}
+                            className={`flex items-center gap-4 px-6 py-3 transition-all cursor-pointer ${
+                              isChecked ? "bg-emerald-50" : "hover:bg-gray-50"
+                            }`}
+                            onClick={() => toggleItem(key, item)}
+                          >
+                            <Checkbox
+                              checked={isChecked}
+                              onCheckedChange={() => toggleItem(key, item)}
+                              className={isChecked ? "border-emerald-500 bg-emerald-500" : ""}
+                            />
+                            <span className={`flex-1 text-sm ${isChecked ? "line-through text-[var(--text-muted)]" : "text-[var(--text-primary)]"}`}>
+                              {item.ingredient_name}
+                            </span>
+                            <span className={`font-mono text-sm ${isChecked ? "text-[var(--text-muted)]" : "text-[var(--text-secondary)]"}`}>
+                              {item.total_amount} {item.unit}
+                            </span>
+                            {isChecked && <Check className="w-4 h-4 text-emerald-500" />}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Sonstige Artikel */}
             {hasStapleItems && (
               <Card className="bg-white border-gray-100 overflow-hidden" data-testid="staple-items-section">
                 <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">

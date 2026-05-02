@@ -40,6 +40,7 @@ async def get_shopping_list(date_from: str, date_to: str, user: User = Depends(g
     # Zutaten aus allen Tagen im Zeitraum aggregieren
     recipe_ids = set()
     recipe_portions = {}
+    recipe_names = {}  # recipe_id -> name
 
     for plan in plans:
         for day in plan.get("days", []):
@@ -65,17 +66,27 @@ async def get_shopping_list(date_from: str, date_to: str, user: User = Depends(g
                                 recipe_ids.add(sd_id)
                                 recipe_portions[sd_id] = recipe_portions.get(sd_id, 0) + sd_portions
 
-    # Zutaten berechnen
+    # Zutaten berechnen – flach aggregiert UND pro Rezept
     ingredients_map = {}
+    by_recipe = []  # [{recipe_id, recipe_name, items: [...]}]
     for recipe_id in recipe_ids:
         recipe = await db.recipes.find_one({"recipe_id": recipe_id}, {"_id": 0})
         if recipe:
+            recipe_name = recipe.get("title", recipe_id)
+            recipe_names[recipe_id] = recipe_name
             base_portions = recipe.get("portions", 4)
             multiplier = recipe_portions[recipe_id] / base_portions
+            recipe_items = []
             for ing in recipe.get("ingredients", []):
                 key = f"{ing['name'].lower()}_{ing['unit'].lower()}"
                 try:
                     amount = float(ing["amount"]) * multiplier
+                    recipe_item = {
+                        "ingredient_name": ing["name"],
+                        "total_amount": str(round(amount, 2)),
+                        "unit": ing["unit"],
+                        "checked": False,
+                    }
                     if key in ingredients_map:
                         ingredients_map[key]["total_amount"] += amount
                     else:
@@ -86,6 +97,12 @@ async def get_shopping_list(date_from: str, date_to: str, user: User = Depends(g
                             "checked": False
                         }
                 except ValueError:
+                    recipe_item = {
+                        "ingredient_name": ing["name"],
+                        "total_amount": ing["amount"],
+                        "unit": ing["unit"],
+                        "checked": False,
+                    }
                     if key not in ingredients_map:
                         ingredients_map[key] = {
                             "ingredient_name": ing["name"],
@@ -93,6 +110,13 @@ async def get_shopping_list(date_from: str, date_to: str, user: User = Depends(g
                             "unit": ing["unit"],
                             "checked": False
                         }
+                recipe_items.append(recipe_item)
+            if recipe_items:
+                by_recipe.append({
+                    "recipe_id": recipe_id,
+                    "recipe_name": recipe_name,
+                    "items": recipe_items,
+                })
 
     items = []
     for item in ingredients_map.values():
@@ -143,7 +167,7 @@ async def get_shopping_list(date_from: str, date_to: str, user: User = Depends(g
             "is_staple": True
         })
 
-    return {"items": items, "staple_items": staple_list, "date_from": date_from, "date_to": date_to}
+    return {"items": items, "staple_items": staple_list, "by_recipe": by_recipe, "date_from": date_from, "date_to": date_to}
 
 
 @router.post("/shopping-list/toggle")
