@@ -432,7 +432,7 @@ export default function Ingredients() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-heading text-3xl font-bold text-[var(--text-primary)]">Zutaten-Stammdaten</h1>
+          <h1 className="font-heading text-3xl font-bold text-[var(--text-primary)]">Zutaten</h1>
           <p className="text-[var(--text-muted)] text-sm mt-1">Nährwerte, Packmaße und Bezugsquellen verwalten</p>
         </div>
         <Button onClick={openCreate} className="btn-primary">

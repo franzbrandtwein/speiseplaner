@@ -105,7 +105,7 @@ const Layout = ({ children }) => {
     {
       label: "Verwaltung",
       items: [
-        { path: "/ingredients", label: "Zutaten-Stammdaten", icon: Database },
+        { path: "/ingredients", label: "Zutaten", icon: Database },
         { path: "/sources", label: "Bezugsquellen", icon: MapPin },
         { path: "/group", label: "Gruppe", icon: Users },
         { path: "/notifications", label: "Benachrichtigungen", icon: Bell },
