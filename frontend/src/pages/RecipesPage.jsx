@@ -60,18 +60,18 @@ const RecipesPage = () => {
     const matchesSearch = !search || 
       recipe.name.toLowerCase().includes(search.toLowerCase()) ||
       recipe.description?.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = !categoryFilter || recipe.category === categoryFilter;
+    const matchesCategory = categoryFilter === "__all__" || !categoryFilter || recipe.category === categoryFilter;
     const matchesDifficulty = !difficultyFilter || recipe.difficulty === difficultyFilter;
     return matchesSearch && matchesCategory && matchesDifficulty;
   });
 
   const clearFilters = () => {
     setSearch("");
-    setCategoryFilter("");
+    setCategoryFilter("Hauptgericht");
     setDifficultyFilter("");
   };
 
-  const hasActiveFilters = search || categoryFilter || difficultyFilter;
+  const hasActiveFilters = search || (categoryFilter && categoryFilter !== "Hauptgericht") || difficultyFilter;
 
   if (loading) {
     return (
@@ -134,7 +134,7 @@ const RecipesPage = () => {
                 <SelectValue placeholder="Kategorie" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Alle</SelectItem>
+                <SelectItem value="__all__">Alle</SelectItem>
                 {categories.categories?.map(cat => (
                   <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                 ))}
