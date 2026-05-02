@@ -10,6 +10,8 @@ from routes.recipes import router as recipes_router
 from routes.mealplans import router as mealplans_router
 from routes.shopping import router as shopping_router
 from routes.pantry import router as pantry_router
+from routes.sources import router as sources_router
+from routes.ingredients import router as ingredients_router
 from routes.groups import router as groups_router
 from routes.notifications import router as notifications_router, notification_scheduler_loop
 from routes.admin import get_router as get_admin_router
@@ -43,6 +45,8 @@ app.include_router(recipes_router)
 app.include_router(mealplans_router)
 app.include_router(shopping_router)
 app.include_router(pantry_router)
+app.include_router(sources_router)
+app.include_router(ingredients_router)
 app.include_router(groups_router)
 app.include_router(notifications_router)
 app.include_router(get_admin_router(db, get_current_user, User))

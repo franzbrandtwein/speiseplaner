@@ -29,14 +29,18 @@ class Ingredient(BaseModel):
     name: str
     amount: str
     unit: str
+    ingredient_id: Optional[str] = None  # Link zu IngredientMaster
 
 
 class NutritionInfo(BaseModel):
-    calories: Optional[int] = None
-    protein: Optional[float] = None
-    carbs: Optional[float] = None
-    fat: Optional[float] = None
-    fiber: Optional[float] = None
+    calories: Optional[float] = None    # kcal
+    protein: Optional[float] = None     # g
+    fat: Optional[float] = None         # g
+    saturated_fat: Optional[float] = None  # g
+    carbs: Optional[float] = None       # g
+    sugar: Optional[float] = None       # g
+    fiber: Optional[float] = None       # g
+    salt: Optional[float] = None        # g
 
 
 class Recipe(BaseModel):
@@ -272,3 +276,45 @@ class NotificationPrefs(BaseModel):
     empty_plan_reminder: bool = True
     empty_plan_reminder_time: str = "18:00"
     new_meal_notification: bool = True
+
+
+# ============ BEZUGSQUELLEN ============
+
+class SourceCreate(BaseModel):
+    name: str
+    type: str = "supermarket"  # supermarket | restaurant | online | other
+    url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SourceUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+# ============ ZUTATEN-STAMMDATEN ============
+
+class PackSize(BaseModel):
+    amount: float
+    unit: str
+    description: str = ""  # z.B. "Tüte", "Dose", "Flasche"
+
+
+class IngredientMasterCreate(BaseModel):
+    name: str
+    category: str = "Sonstiges"
+    nutrition_per_100g: Optional[NutritionInfo] = None
+    pack_sizes: List[PackSize] = []
+    source_ids: List[str] = []
+    shared_with_group: bool = False
+
+
+class IngredientMasterUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    nutrition_per_100g: Optional[NutritionInfo] = None
+    pack_sizes: Optional[List[PackSize]] = None
+    source_ids: Optional[List[str]] = None
+    shared_with_group: Optional[bool] = None

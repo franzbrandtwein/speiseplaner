@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import { API, useAuth } from "../App";
@@ -9,7 +9,8 @@ import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { 
   ChefHat, Clock, Users, Star, ArrowLeft, Edit, Trash2, 
-  AlertTriangle, DollarSign, Flame, UtensilsCrossed, Upload, X, ChevronLeft, ChevronRight
+  AlertTriangle, DollarSign, Flame, UtensilsCrossed, Upload, X, ChevronLeft, ChevronRight,
+  Database
 } from "lucide-react";
 import {
   AlertDialog,
@@ -35,15 +36,32 @@ const RecipeDetail = () => {
   const [hoverStars, setHoverStars] = useState(0);
   const [galleryIdx, setGalleryIdx] = useState(0);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [nutrition, setNutrition] = useState(null);
+  const [nutritionView, setNutritionView] = useState("portion"); // "portion" | "total"
+  const [nutritionLoading, setNutritionLoading] = useState(false);
 
   useEffect(() => {
     fetchRecipe();
   }, [id]);
 
+  const fetchNutrition = useCallback(async (recipeId) => {
+    setNutritionLoading(true);
+    try {
+      const { data } = await axios.get(`${API}/api/recipes/${recipeId}/nutrition`, { withCredentials: true });
+      // Nur anzeigen wenn mindestens Kalorien bekannt
+      if (data.total?.calories != null) setNutrition(data);
+    } catch {
+      // Keine Nährwerte → still ignorieren
+    } finally {
+      setNutritionLoading(false);
+    }
+  }, []);
+
   const fetchRecipe = async () => {
     try {
       const response = await axios.get(`${API}/recipes/${id}`, { withCredentials: true });
       setRecipe(response.data);
+      fetchNutrition(id);
       
       const myRating = response.data.ratings?.find(r => r.user_id === user?.user_id);
       if (myRating) {
@@ -452,31 +470,64 @@ const RecipeDetail = () => {
               )}
             </Card>
 
-            {/* Nutrition */}
-            {recipe.nutrition && (
+            {/* Nutrition – berechnet aus Stammdaten */}
+            {(nutrition || nutritionLoading) && (
               <Card className="p-6 bg-white border-gray-100">
-                <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-                  <Flame className="w-5 h-5 text-amber-500" />
-                  Nährwerte
-                </h2>
-                <p className="text-sm text-[var(--text-muted)] mb-4">pro Portion</p>
-                <div className="space-y-3">
-                  {recipe.nutrition.calories && (
-                    <NutritionRow label="Kalorien" value={`${recipe.nutrition.calories} kcal`} />
-                  )}
-                  {recipe.nutrition.protein && (
-                    <NutritionRow label="Protein" value={`${recipe.nutrition.protein} g`} />
-                  )}
-                  {recipe.nutrition.carbs && (
-                    <NutritionRow label="Kohlenhydrate" value={`${recipe.nutrition.carbs} g`} />
-                  )}
-                  {recipe.nutrition.fat && (
-                    <NutritionRow label="Fett" value={`${recipe.nutrition.fat} g`} />
-                  )}
-                  {recipe.nutrition.fiber && (
-                    <NutritionRow label="Ballaststoffe" value={`${recipe.nutrition.fiber} g`} />
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <Flame className="w-5 h-5 text-amber-500" />
+                    Nährwerte
+                  </h2>
+                  {nutrition && (
+                    <div className="flex bg-gray-100 rounded-lg p-0.5 text-sm">
+                      <button
+                        onClick={() => setNutritionView("portion")}
+                        className={`px-3 py-1 rounded-md font-medium transition-all ${nutritionView === "portion" ? "bg-white shadow-sm text-emerald-700" : "text-gray-500"}`}
+                      >
+                        Pro Portion
+                      </button>
+                      <button
+                        onClick={() => setNutritionView("total")}
+                        className={`px-3 py-1 rounded-md font-medium transition-all ${nutritionView === "total" ? "bg-white shadow-sm text-emerald-700" : "text-gray-500"}`}
+                      >
+                        Gesamt
+                      </button>
+                    </div>
                   )}
                 </div>
+                {nutritionLoading && <p className="text-sm text-gray-400">Berechne …</p>}
+                {nutrition && (() => {
+                  const n = nutritionView === "portion" ? nutrition.per_portion : nutrition.total;
+                  const fields = [
+                    { key: "calories", label: "Kalorien", unit: "kcal", color: "bg-orange-50 text-orange-700 border-orange-200" },
+                    { key: "protein", label: "Protein", unit: "g", color: "bg-blue-50 text-blue-700 border-blue-200" },
+                    { key: "fat", label: "Fett", unit: "g", color: "bg-yellow-50 text-yellow-700 border-yellow-200" },
+                    { key: "saturated_fat", label: "ges. Fett", unit: "g", color: "bg-yellow-50 text-yellow-600 border-yellow-100" },
+                    { key: "carbs", label: "Kohlenhydr.", unit: "g", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                    { key: "sugar", label: "Zucker", unit: "g", color: "bg-emerald-50 text-emerald-600 border-emerald-100" },
+                    { key: "fiber", label: "Ballaststoffe", unit: "g", color: "bg-green-50 text-green-700 border-green-200" },
+                    { key: "salt", label: "Salz", unit: "g", color: "bg-gray-50 text-gray-600 border-gray-200" },
+                  ];
+                  return (
+                    <>
+                      <div className="grid grid-cols-4 gap-2">
+                        {fields.map(f => n[f.key] != null ? (
+                          <div key={f.key} className={`rounded-xl border p-3 text-center ${f.color}`}>
+                            <div className="text-lg font-bold">{n[f.key]}</div>
+                            <div className="text-xs opacity-70">{f.unit}</div>
+                            <div className="text-[11px] mt-0.5 leading-tight">{f.label}</div>
+                          </div>
+                        ) : null)}
+                      </div>
+                      {nutrition.missing?.length > 0 && (
+                        <p className="text-xs text-gray-400 mt-3 flex items-center gap-1">
+                          <Database className="w-3 h-3" />
+                          Keine Stammdaten für: {nutrition.missing.join(", ")}
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
               </Card>
             )}
 

@@ -18,6 +18,8 @@ import InvitePage from "./pages/InvitePage";
 import NotificationSettings from "./pages/NotificationSettings";
 import StapleItems from "./pages/StapleItems";
 import Pantry from "./pages/Pantry";
+import Sources from "./pages/Sources";
+import Ingredients from "./pages/Ingredients";
 import RecipePrint from "./pages/RecipePrint";
 import NutritionTracking from "./pages/NutritionTracking";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -275,6 +277,22 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sources"
+        element={
+          <ProtectedRoute>
+            <Sources />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ingredients"
+        element={
+          <ProtectedRoute>
+            <Ingredients />
           </ProtectedRoute>
         }
       />

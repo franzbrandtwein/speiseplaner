@@ -681,6 +681,7 @@ const MealPlanner = () => {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false); // "save" | "apply" | false
   const [templateName, setTemplateName] = useState("");
   const [showCopyDialog, setShowCopyDialog] = useState(false);
+  const [dayNutrition, setDayNutrition] = useState({}); // { dateStr: { calories, protein, ... } }
 
   const weekStartStr = format(currentWeekStart, "yyyy-MM-dd");
 
@@ -704,12 +705,58 @@ const MealPlanner = () => {
       setMealPlan(planRes.data);
       setRecipes(recipesRes.data);
       setGroupMembers((groupRes.data.members || []).map(m => m.name));
+      // Nährwerte werden nach Plan-Laden asynchron berechnet
+      fetchWeekNutrition(planRes.data);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Daten konnten nicht geladen werden");
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchWeekNutrition = async (plan) => {
+    if (!plan?.days) return;
+    const recipeIds = new Set();
+    plan.days.forEach(day => {
+      ["breakfast", "lunch", "dinner"].forEach(mt => {
+        (day[mt] || []).forEach(m => { if (m.recipe_id) recipeIds.add(m.recipe_id); });
+      });
+    });
+    if (recipeIds.size === 0) return;
+
+    // Nährwerte pro Rezept laden (parallel, Fehler ignorieren)
+    const results = await Promise.all(
+      [...recipeIds].map(rid =>
+        axios.get(`${API}/api/recipes/${rid}/nutrition`, { withCredentials: true })
+          .then(r => [rid, r.data])
+          .catch(() => null)
+      )
+    );
+    const nutritionByRecipe = Object.fromEntries(results.filter(Boolean));
+
+    // Pro Tag summieren
+    const byDay = {};
+    plan.days.forEach(day => {
+      const total = { calories: null, protein: null, fat: null, carbs: null };
+      ["breakfast", "lunch", "dinner"].forEach(mt => {
+        (day[mt] || []).forEach(m => {
+          if (!m.recipe_id || m.is_external) return;
+          const n = nutritionByRecipe[m.recipe_id];
+          if (!n?.per_portion) return;
+          const factor = (m.portions || 2) / (n.portions || 1);
+          ["calories", "protein", "fat", "carbs"].forEach(k => {
+            if (n.total?.[k] != null) {
+              total[k] = (total[k] ?? 0) + n.total[k] * factor;
+            }
+          });
+        });
+      });
+      if (total.calories != null) {
+        byDay[day.date] = { calories: Math.round(total.calories), protein: total.protein != null ? Math.round(total.protein) : null, fat: total.fat != null ? Math.round(total.fat) : null, carbs: total.carbs != null ? Math.round(total.carbs) : null };
+      }
+    });
+    setDayNutrition(byDay);
   };
 
   const getMealsForSlot = (dateStr, mealType) => {
@@ -1081,6 +1128,11 @@ const MealPlanner = () => {
                     }`}>
                       {format(date, "d")}
                     </p>
+                    {dayNutrition[dateStr] && (
+                      <p className="text-[10px] text-orange-500 font-medium mt-0.5">
+                        {dayNutrition[dateStr].calories} kcal
+                      </p>
+                    )}
                   </div>
                 );
               })}

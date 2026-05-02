@@ -5,7 +5,8 @@ import { useAuth, API } from "../App";
 import { Button } from "./ui/button";
 import { 
   ChefHat, LayoutDashboard, BookOpen, Calendar, ShoppingCart, 
-  LogOut, Menu, X, User, Sparkles, Users, RefreshCw, Bell, Package, Flame, Shield, Archive
+  LogOut, Menu, X, User, Sparkles, Users, RefreshCw, Bell, Package, Flame, Shield, Archive,
+  Database, MapPin
 } from "lucide-react";
 import InstallPrompt, { InstallButton } from "./InstallPrompt";
 import {
@@ -62,19 +63,33 @@ const Layout = ({ children }) => {
       .catch(() => setIsAdmin(false));
   }, []);
 
-  const navItems = [
-    { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { path: "/recipes", label: "Rezepte", icon: BookOpen },
-    { path: "/ingredient-search", label: "Was kochen?", icon: Sparkles },
-    { path: "/meal-planner", label: "Speiseplan", icon: Calendar },
-    { path: "/shopping-list", label: "Einkaufsliste", icon: ShoppingCart },
-    { path: "/pantry", label: "Speisekammer", icon: Archive },
-    { path: "/staple-items", label: "Sonstige Artikel", icon: Package },
-    { path: "/nutrition", label: "Nährwerte", icon: Flame },
-    { path: "/group", label: "Gruppe", icon: Users },
-    { path: "/notifications", label: "Benachrichtigungen", icon: Bell },
-    ...(isAdmin ? [{ path: "/admin", label: "Admin", icon: Shield }] : []),
+  const navGroups = [
+    {
+      items: [
+        { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { path: "/recipes", label: "Rezepte", icon: BookOpen },
+        { path: "/ingredient-search", label: "Was kochen?", icon: Sparkles },
+        { path: "/meal-planner", label: "Speiseplan", icon: Calendar },
+        { path: "/shopping-list", label: "Einkaufsliste", icon: ShoppingCart },
+        { path: "/pantry", label: "Speisekammer", icon: Archive },
+        { path: "/staple-items", label: "Sonstige Artikel", icon: Package },
+        { path: "/nutrition", label: "Nährwerte", icon: Flame },
+      ],
+    },
+    {
+      label: "Verwaltung",
+      items: [
+        { path: "/ingredients", label: "Zutaten-Stammdaten", icon: Database },
+        { path: "/sources", label: "Bezugsquellen", icon: MapPin },
+        { path: "/group", label: "Gruppe", icon: Users },
+        { path: "/notifications", label: "Benachrichtigungen", icon: Bell },
+        ...(isAdmin ? [{ path: "/admin", label: "Admin", icon: Shield }] : []),
+      ],
+    },
   ];
+
+  // Flache Liste für Mobilnavigation (erste Gruppe)
+  const navItems = navGroups.flatMap(g => g.items);
 
   return (
     <div className="min-h-screen bg-[var(--bg-default)]">
@@ -91,22 +106,31 @@ const Layout = ({ children }) => {
         </Link>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-1">
-          {navItems.map(({ path, label, icon: Icon }) => {
-            const isActive = location.pathname === path || 
-              (path !== "/dashboard" && location.pathname.startsWith(path));
-            return (
-              <Link
-                key={path}
-                to={path}
-                className={`nav-link ${isActive ? "active" : ""}`}
-                data-testid={`nav-${path.replace("/", "")}`}
-              >
-                <Icon className="w-5 h-5" />
-                {label}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 space-y-1 overflow-y-auto">
+          {navGroups.map((group, gi) => (
+            <div key={gi}>
+              {group.label && (
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 px-3 mt-4 mb-1">
+                  {group.label}
+                </p>
+              )}
+              {group.items.map(({ path, label, icon: Icon }) => {
+                const isActive = location.pathname === path ||
+                  (path !== "/dashboard" && location.pathname.startsWith(path));
+                return (
+                  <Link
+                    key={path}
+                    to={path}
+                    className={`nav-link ${isActive ? "active" : ""}`}
+                    data-testid={`nav-${path.replace("/", "")}`}
+                  >
+                    <Icon className="w-5 h-5" />
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* Install Button */}
@@ -177,21 +201,30 @@ const Layout = ({ children }) => {
             className="absolute right-0 top-16 w-64 h-[calc(100vh-4rem)] bg-white p-4 animate-slide-in"
             onClick={e => e.stopPropagation()}
           >
-            <nav className="space-y-1">
-              {navItems.map(({ path, label, icon: Icon }) => {
-                const isActive = location.pathname === path;
-                return (
-                  <Link
-                    key={path}
-                    to={path}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`nav-link ${isActive ? "active" : ""}`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    {label}
-                  </Link>
-                );
-              })}
+            <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-12rem)]">
+              {navGroups.map((group, gi) => (
+                <div key={gi}>
+                  {group.label && (
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 px-3 mt-3 mb-1">
+                      {group.label}
+                    </p>
+                  )}
+                  {group.items.map(({ path, label, icon: Icon }) => {
+                    const isActive = location.pathname === path;
+                    return (
+                      <Link
+                        key={path}
+                        to={path}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`nav-link ${isActive ? "active" : ""}`}
+                      >
+                        <Icon className="w-5 h-5" />
+                        {label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ))}
             </nav>
             
             <div className="absolute bottom-16 left-4 right-4">
