@@ -550,7 +550,8 @@ const RecipeForm = () => {
                     type="number"
                     min="1"
                     value={formData.portions}
-                    onChange={e => updateField("portions", parseInt(e.target.value) || 1)}
+                    onChange={e => updateField("portions", e.target.value === "" ? "" : parseInt(e.target.value) || 1)}
+                    onBlur={e => { if (!e.target.value || parseInt(e.target.value) < 1) updateField("portions", 1); }}
                     className="input-field mt-1"
                     data-testid="portions-input"
                   />
