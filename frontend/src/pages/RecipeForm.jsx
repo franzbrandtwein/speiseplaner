@@ -23,13 +23,13 @@ import { ArrowLeft, Plus, Trash2, Save, Upload, Users, Search, X, Check, Sparkle
 /** Autocomplete-Eingabefeld für Zutaten mit Stammdaten-Verknüpfung */
 const IngredientNameInput = ({ value, ingredientId, onChange, onCreateNew, allIngredients, idx }) => {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState(value);
+  const [query, setQuery] = useState(value ?? "");
   const [creating, setCreating] = useState(false);
   const containerRef = useRef(null);
   const inputRef = useRef(null);
 
   // Sync external value changes (e.g. when editing existing recipe)
-  useEffect(() => { setQuery(value); }, [value]);
+  useEffect(() => { setQuery(value ?? ""); }, [value]);
 
   const suggestions = query.trim().length === 0
     ? allIngredients.slice(0, 8)
@@ -851,7 +851,7 @@ const RecipeForm = () => {
                 <Input
                   type="number"
                   min="0"
-                  value={formData.nutrition.calories}
+                  value={formData.nutrition.calories ?? ""}
                   onChange={e => updateNutrition("calories", e.target.value)}
                   className="input-field mt-1"
                 />
@@ -862,7 +862,7 @@ const RecipeForm = () => {
                   type="number"
                   min="0"
                   step="0.1"
-                  value={formData.nutrition.protein}
+                  value={formData.nutrition.protein ?? ""}
                   onChange={e => updateNutrition("protein", e.target.value)}
                   className="input-field mt-1"
                 />
@@ -873,7 +873,7 @@ const RecipeForm = () => {
                   type="number"
                   min="0"
                   step="0.1"
-                  value={formData.nutrition.carbs}
+                  value={formData.nutrition.carbs ?? ""}
                   onChange={e => updateNutrition("carbs", e.target.value)}
                   className="input-field mt-1"
                 />
@@ -884,7 +884,7 @@ const RecipeForm = () => {
                   type="number"
                   min="0"
                   step="0.1"
-                  value={formData.nutrition.fat}
+                  value={formData.nutrition.fat ?? ""}
                   onChange={e => updateNutrition("fat", e.target.value)}
                   className="input-field mt-1"
                 />
@@ -895,7 +895,7 @@ const RecipeForm = () => {
                   type="number"
                   min="0"
                   step="0.1"
-                  value={formData.nutrition.fiber}
+                  value={formData.nutrition.fiber ?? ""}
                   onChange={e => updateNutrition("fiber", e.target.value)}
                   className="input-field mt-1"
                 />
