@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import {
   ChevronLeft, ChevronRight, Plus, X, Save, ShoppingCart,
   Coffee, UtensilsCrossed, Moon, ChefHat, ArrowLeft,
-  Search, Minus, GripVertical, Users, Copy, BookTemplate, Bookmark
+  Search, Minus, GripVertical, Users, Copy, BookTemplate, Bookmark, CookingPot
 } from "lucide-react";
 import { format, startOfWeek, addDays, addWeeks, subWeeks } from "date-fns";
 import { de } from "date-fns/locale";
@@ -498,7 +498,7 @@ const SlotCell = ({ meals, totalPortions, onOpen, dateStr, mealKey, onDragStart,
 };
 
 // ─── Slot Detail Dialog (Overlay, Multi-Meal) ─────────────────────────────────
-const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, onAddMeal, onEditMeal, onRemoveMeal, onClearAll, onUpdatePortions, onUpdateSidePortions, onRemoveSide, recipes }) => {
+const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, onAddMeal, onEditMeal, onRemoveMeal, onClearAll, onUpdatePortions, onUpdateSidePortions, onRemoveSide, onCook, recipes }) => {
   if (!meals || meals.length === 0) return null;
 
   const mealLabels = { breakfast: "Frühstück", lunch: "Mittagessen", dinner: "Abendessen" };
@@ -575,9 +575,17 @@ const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, onAddMeal, 
         </div>
 
         {/* Action buttons */}
-        <div className="flex gap-2 pt-3 border-t border-gray-100">
+        <div className="flex gap-2 pt-3 border-t border-gray-100 flex-wrap">
           <Button onClick={onAddMeal} className="btn-primary flex-1" data-testid="detail-add-meal-btn">
             <Plus className="w-4 h-4" /> Gericht hinzufügen
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onCook}
+            className="text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+            title="Zutaten aus Speisekammer abziehen"
+          >
+            <CookingPot className="w-4 h-4" /> Gekocht
           </Button>
           <Button
             variant="outline"
@@ -1077,6 +1085,31 @@ const MealPlanner = () => {
             onClearAll={() => {
               clearSlot(detailSlot.dateStr, detailSlot.mealType);
               setDetailSlot(null);
+            }}
+            onCook={async () => {
+              const meals = getMealsForSlot(detailSlot.dateStr, detailSlot.mealType);
+              const entries = [];
+              meals.forEach(m => {
+                if (m.recipe_id) entries.push({ recipe_id: m.recipe_id, portions: m.portions || 2 });
+                (m.side_dishes || []).forEach(sd => {
+                  if (sd.recipe_id) entries.push({ recipe_id: sd.recipe_id, portions: sd.portions || 2 });
+                });
+              });
+              if (entries.length === 0) return;
+              try {
+                const res = await axios.post(`${API}/pantry/consume`, { meals: entries }, { withCredentials: true });
+                const { consumed, not_available } = res.data;
+                if (consumed.length > 0) {
+                  toast.success(`${consumed.length} Zutaten aus Speisekammer abgezogen`);
+                } else {
+                  toast.info("Keine passenden Zutaten in der Speisekammer gefunden");
+                }
+                if (not_available.length > 0) {
+                  toast.warning(`Nicht vorrätig: ${not_available.slice(0, 3).map(i => i.name).join(", ")}${not_available.length > 3 ? " …" : ""}`);
+                }
+              } catch {
+                toast.error("Fehler beim Abziehen aus der Speisekammer");
+              }
             }}
             onUpdatePortions={(index, val) => updateMealPortions(detailSlot.dateStr, detailSlot.mealType, index, val)}
             onUpdateSidePortions={(mealIdx, rid, val) => updateMealSidePortions(detailSlot.dateStr, detailSlot.mealType, mealIdx, rid, val)}

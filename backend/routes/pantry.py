@@ -1,13 +1,24 @@
 """Speisekammer (Pantry): Vorratsverwaltung mit automatischer Einbuchung aus der Einkaufsliste"""
 import uuid
 from datetime import datetime, timezone
+from typing import List
 
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
 
 from core import db, get_current_user
 from models import User, PantryItemCreate, PantryItemUpdate, PantryBookRequest
 
 router = APIRouter(prefix="/api")
+
+
+class ConsumeEntry(BaseModel):
+    recipe_id: str
+    portions: int = 2
+
+
+class ConsumeRequest(BaseModel):
+    meals: List[ConsumeEntry]
 
 
 async def _get_scope(user: User):
@@ -106,3 +117,54 @@ async def book_into_pantry(data: PantryBookRequest, user: User = Depends(get_cur
         await db.pantry.insert_one(doc)
         doc.pop("_id", None)
         return doc
+
+
+@router.post("/pantry/consume")
+async def consume_from_pantry(data: ConsumeRequest, user: User = Depends(get_current_user)):
+    """Zieht die Zutaten der angegebenen Rezepte (mit Portionszahl) aus der Speisekammer ab."""
+    user_id, group_id = await _get_scope(user)
+    pantry_query = _scope_query(user_id, group_id)
+
+    # Zutaten aller Rezepte berechnen
+    ingredients_to_consume: dict[str, float] = {}
+    units: dict[str, str] = {}
+
+    for entry in data.meals:
+        recipe = await db.recipes.find_one({"recipe_id": entry.recipe_id}, {"_id": 0})
+        if not recipe:
+            continue
+        base_portions = recipe.get("portions", 4) or 4
+        multiplier = entry.portions / base_portions
+        for ing in recipe.get("ingredients", []):
+            key = f"{ing['name'].lower()}_{ing['unit'].lower()}"
+            try:
+                amount = float(ing["amount"]) * multiplier
+                ingredients_to_consume[key] = ingredients_to_consume.get(key, 0) + amount
+                units[key] = ing["unit"]
+            except (ValueError, TypeError):
+                pass
+
+    now = datetime.now(timezone.utc).isoformat()
+    consumed = []
+    not_available = []
+
+    for key, amount_needed in ingredients_to_consume.items():
+        name_part = key.rsplit("_", 1)[0]
+        unit = units[key]
+        # Case-insensitive Suche nach Pantry-Eintrag
+        query = {**pantry_query, "name": {"$regex": f"^{name_part}$", "$options": "i"}, "unit": unit}
+        existing = await db.pantry.find_one(query, {"_id": 0})
+        if existing:
+            new_amount = round(existing["amount"] - amount_needed, 3)
+            if new_amount <= 0:
+                await db.pantry.delete_one({"item_id": existing["item_id"]})
+            else:
+                await db.pantry.update_one(
+                    {"item_id": existing["item_id"]},
+                    {"$set": {"amount": new_amount, "updated_at": now}}
+                )
+            consumed.append({"name": existing["name"], "unit": unit, "amount": round(amount_needed, 3)})
+        else:
+            not_available.append({"name": name_part, "unit": unit})
+
+    return {"consumed": consumed, "not_available": not_available}
