@@ -9,6 +9,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "../components/ui/dialog";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "../components/ui/select";
+import {
   Plus, Pencil, Trash2, Search, X, ChevronDown, ChevronUp,
   ShoppingBag, Globe, UtensilsCrossed, HelpCircle, Package,
 } from "lucide-react";
@@ -59,6 +62,8 @@ export function NutritionBadges({ nutrition, className = "" }) {
 }
 
 // ─── Pack Sizes Editor ────────────────────────────────────────────────────────
+const PACK_UNITS = ["g", "kg", "ml", "l", "Stk.", "EL", "TL", "Prise", "Packung"];
+
 const PackSizeEditor = ({ packs, onChange }) => {
   const add = () => onChange([...packs, { amount: "", unit: "g", description: "" }]);
   const remove = (i) => onChange(packs.filter((_, idx) => idx !== i));
@@ -75,12 +80,14 @@ const PackSizeEditor = ({ packs, onChange }) => {
             className="w-20"
             type="number"
           />
-          <Input
-            placeholder="g"
-            value={p.unit}
-            onChange={e => update(i, "unit", e.target.value)}
-            className="w-16"
-          />
+          <Select value={p.unit} onValueChange={v => update(i, "unit", v)}>
+            <SelectTrigger className="w-20">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PACK_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Input
             placeholder="Tüte, Dose …"
             value={p.description}
@@ -172,7 +179,13 @@ const IngredientDialog = ({ open, onClose, onSave, initial, sources }) => {
 
     const packs = form.pack_sizes
       .filter(p => p.amount && p.unit)
-      .map(p => ({ amount: parseFloat(p.amount), unit: p.unit, description: p.description || "" }));
+      .map(p => {
+        // Normalisierung alter Freitexteingaben
+        let unit = p.unit.trim();
+        const unitMap = { "liter": "l", "Liter": "l", "litre": "l", "gram": "g", "gramm": "g", "kilogramm": "kg", "milliliter": "ml" };
+        unit = unitMap[unit] ?? unit;
+        return { amount: parseFloat(p.amount), unit, description: p.description || "" };
+      });
 
     onSave({
       name: form.name.trim(),
