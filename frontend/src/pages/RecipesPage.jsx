@@ -24,7 +24,7 @@ const RecipesPage = () => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("Hauptgericht");
   const [difficultyFilter, setDifficultyFilter] = useState("");
   const [showImport, setShowImport] = useState(false);
 
@@ -134,6 +134,7 @@ const RecipesPage = () => {
                 <SelectValue placeholder="Kategorie" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="">Alle</SelectItem>
                 {categories.categories?.map(cat => (
                   <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                 ))}
