@@ -51,8 +51,22 @@ const ShoppingList = () => {
     setDateTo(toDateStr(defaultTo()));
   };
 
-  const toggleItem = (key) => {
+  const toggleItem = (key, item) => {
+    const wasChecked = checkedItems[key];
     setCheckedItems(prev => ({ ...prev, [key]: !prev[key] }));
+
+    // Beim Abhaken automatisch in Speisekammer einbuchen
+    if (!wasChecked && item) {
+      const amount = parseFloat(item.total_amount);
+      if (!isNaN(amount) && amount > 0) {
+        axios.post(`${API}/pantry/book`, {
+          name: item.ingredient_name,
+          amount,
+          unit: item.unit || "",
+          category: item.category || "Sonstiges",
+        }, { withCredentials: true }).catch(() => {});
+      }
+    }
   };
 
   const allItems = [
@@ -231,12 +245,12 @@ const ShoppingList = () => {
                         className={`flex items-center gap-4 px-6 py-3 transition-all cursor-pointer ${
                           isChecked ? "bg-emerald-50" : "hover:bg-gray-50"
                         }`}
-                        onClick={() => toggleItem(key)}
+                        onClick={() => toggleItem(key, item)}
                         data-testid={`shopping-item-${idx}`}
                       >
                         <Checkbox
                           checked={isChecked}
-                          onCheckedChange={() => toggleItem(key)}
+                          onCheckedChange={() => toggleItem(key, item)}
                           className={isChecked ? "border-emerald-500 bg-emerald-500" : ""}
                         />
                         <span className={`flex-1 text-sm ${isChecked ? "line-through text-[var(--text-muted)]" : "text-[var(--text-primary)]"}`}>
@@ -280,12 +294,12 @@ const ShoppingList = () => {
                         className={`flex items-center gap-4 px-6 py-3 transition-all cursor-pointer ${
                           isChecked ? "bg-emerald-50" : "hover:bg-gray-50"
                         }`}
-                        onClick={() => toggleItem(key)}
+                        onClick={() => toggleItem(key, item)}
                         data-testid={`staple-shopping-item-${item.item_id}`}
                       >
                         <Checkbox
                           checked={isChecked}
-                          onCheckedChange={() => toggleItem(key)}
+                          onCheckedChange={() => toggleItem(key, item)}
                           className={isChecked ? "border-emerald-500 bg-emerald-500" : ""}
                         />
                         <span className={`flex-1 text-sm ${isChecked ? "line-through text-[var(--text-muted)]" : "text-[var(--text-primary)]"}`}>

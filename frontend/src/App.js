@@ -17,6 +17,7 @@ import GroupPage from "./pages/GroupPage";
 import InvitePage from "./pages/InvitePage";
 import NotificationSettings from "./pages/NotificationSettings";
 import StapleItems from "./pages/StapleItems";
+import Pantry from "./pages/Pantry";
 import RecipePrint from "./pages/RecipePrint";
 import NutritionTracking from "./pages/NutritionTracking";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -245,6 +246,14 @@ function AppRouter() {
         }
       />
       <Route path="/invite/:token" element={<InvitePage />} />
+      <Route
+        path="/pantry"
+        element={
+          <ProtectedRoute>
+            <Pantry />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/recipes/:id/print"
         element={

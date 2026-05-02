@@ -100,6 +100,30 @@ async def get_shopping_list(date_from: str, date_to: str, user: User = Depends(g
             item["total_amount"] = str(round(item["total_amount"], 2))
         items.append(item)
 
+    # Speisekammer-Bestände abziehen
+    pantry_query = {"group_id": group_id} if group_id else {"user_id": user.user_id, "group_id": None}
+    pantry_items = await db.pantry.find(pantry_query, {"_id": 0}).to_list(1000)
+    pantry_stock = {}
+    for pi in pantry_items:
+        key = f"{pi['name'].lower()}_{pi['unit'].lower()}"
+        pantry_stock[key] = pantry_stock.get(key, 0) + pi["amount"]
+
+    filtered_items = []
+    for item in items:
+        key = f"{item['ingredient_name'].lower()}_{item['unit'].lower()}"
+        if key in pantry_stock:
+            try:
+                needed = float(item["total_amount"])
+                remaining = needed - pantry_stock[key]
+                if remaining <= 0:
+                    continue  # Bereits genug vorhanden
+                item["total_amount"] = str(round(remaining, 2))
+                item["from_pantry"] = str(round(min(pantry_stock[key], needed), 2))
+            except ValueError:
+                pass
+        filtered_items.append(item)
+    items = filtered_items
+
     # Sonstige Artikel laden
     user_doc_fresh = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     group_id_fresh = user_doc_fresh.get("group_id") if user_doc_fresh else group_id

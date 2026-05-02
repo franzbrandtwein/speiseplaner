@@ -230,6 +230,31 @@ class TemplateCreate(BaseModel):
     week_start: str
 
 
+# ============ PANTRY ============
+
+class PantryItemCreate(BaseModel):
+    name: str
+    amount: float
+    unit: str
+    category: str = "Sonstiges"
+    expires_at: Optional[str] = None  # ISO date string, e.g. "2026-06-01"
+
+
+class PantryItemUpdate(BaseModel):
+    name: Optional[str] = None
+    amount: Optional[float] = None
+    unit: Optional[str] = None
+    category: Optional[str] = None
+    expires_at: Optional[str] = None
+
+
+class PantryBookRequest(BaseModel):
+    name: str
+    amount: float
+    unit: str
+    category: str = "Sonstiges"
+
+
 # ============ NOTIFICATIONS ============
 
 class PushSubscriptionData(BaseModel):
