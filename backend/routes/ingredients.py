@@ -1,5 +1,6 @@
 """Zutaten-Stammdaten: CRUD, Namens-Lookup und Nährwert-Berechnung für Rezepte"""
 import uuid
+import re
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from core import get_current_user, db
@@ -81,7 +82,7 @@ async def list_ingredients(
 @router.get("/api/ingredients/lookup")
 async def lookup_ingredient(name: str = Query(...), user=Depends(get_current_user)):
     """Sucht einen Zutaten-Stammdatensatz per Name (case-insensitiv)."""
-    query = {**_scope_query(user), "name": {"$regex": f"^{name}$", "$options": "i"}}
+    query = {**_scope_query(user), "name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}}
     item = await db.ingredient_masters.find_one(query, {"_id": 0})
     return item  # None wenn nicht gefunden → 200 mit null
 
@@ -90,7 +91,7 @@ async def lookup_ingredient(name: str = Query(...), user=Depends(get_current_use
 async def create_ingredient(data: IngredientMasterCreate, user=Depends(get_current_user)):
     # Duplikat-Check (gleicher Name im Scope)
     existing = await db.ingredient_masters.find_one(
-        {**_scope_query(user), "name": {"$regex": f"^{data.name}$", "$options": "i"}},
+        {**_scope_query(user), "name": {"$regex": f"^{re.escape(data.name)}$", "$options": "i"}},
         {"_id": 0}
     )
     if existing:
@@ -170,7 +171,7 @@ async def get_recipe_nutrition(recipe_id: str, user=Depends(get_current_user)):
             master = await db.ingredient_masters.find_one({"ingredient_id": ing_id}, {"_id": 0})
         if not master:
             master = await db.ingredient_masters.find_one(
-                {**scope, "name": {"$regex": f"^{name}$", "$options": "i"}},
+                {**scope, "name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}},
                 {"_id": 0}
             )
 

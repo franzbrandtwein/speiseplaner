@@ -400,7 +400,7 @@ const RecipeForm = () => {
 
     setSaving(true);
     try {
-      // Fallback: Zutaten ohne ingredient_id per Name nachschlagen (z.B. Altdaten)
+      // Zutaten ohne ingredient_id per Name nachschlagen (für Altdaten / nach Neu-anlegen)
       const resolvedIngredients = await Promise.all(
         formData.ingredients
           .filter(i => i.name.trim())
@@ -413,9 +413,6 @@ const RecipeForm = () => {
                 { withCredentials: true }
               );
               if (found) return { ...ing, ingredient_id: found.ingredient_id };
-              // Noch nicht angelegt (Nutzer hat "Neu anlegen" nicht geklickt)
-              const resolved = await handleCreateIngredient(name);
-              if (resolved) return { ...ing, ingredient_id: resolved.ingredient_id };
             } catch {
               // Fehler ignorieren – Rezept trotzdem speichern
             }
@@ -761,11 +758,19 @@ const RecipeForm = () => {
                         <SelectItem value="kg">kg</SelectItem>
                         <SelectItem value="ml">ml</SelectItem>
                         <SelectItem value="l">l</SelectItem>
+                        <SelectItem value="Stück">Stück</SelectItem>
                         <SelectItem value="Stk">Stk</SelectItem>
                         <SelectItem value="EL">EL</SelectItem>
                         <SelectItem value="TL">TL</SelectItem>
                         <SelectItem value="Prise">Prise</SelectItem>
+                        <SelectItem value="Msp.">Msp.</SelectItem>
                         <SelectItem value="Bund">Bund</SelectItem>
+                        <SelectItem value="Pkg.">Pkg.</SelectItem>
+                        <SelectItem value="Dose">Dose</SelectItem>
+                        <SelectItem value="Flasche">Flasche</SelectItem>
+                        <SelectItem value="Glas">Glas</SelectItem>
+                        <SelectItem value="Scheibe">Scheibe</SelectItem>
+                        <SelectItem value="Zehe">Zehe</SelectItem>
                       </SelectContent>
                     </Select>
                     <Button
