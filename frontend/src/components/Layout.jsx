@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth, API } from "../App";
@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 import { 
   ChefHat, LayoutDashboard, BookOpen, Calendar, ShoppingCart, 
   LogOut, Menu, X, User, Sparkles, Users, RefreshCw, Bell, Package, Flame, Shield, Archive,
-  Database, MapPin
+  Database, MapPin, ChevronDown, Check
 } from "lucide-react";
 import InstallPrompt, { InstallButton } from "./InstallPrompt";
 import {
@@ -55,6 +55,9 @@ const Layout = ({ children }) => {
   };
 
   const [isAdmin, setIsAdmin] = useState(false);
+  const [groups, setGroups] = useState([]);
+  const [activeGroupId, setActiveGroupId] = useState(null);
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
 
   useEffect(() => {
     // Get admin status from /auth/me (avoids 403 console noise from probing /admin/users)
@@ -62,6 +65,29 @@ const Layout = ({ children }) => {
       .then((res) => setIsAdmin(!!res.data?.is_admin))
       .catch(() => setIsAdmin(false));
   }, []);
+
+  const fetchGroups = useCallback(async () => {
+    try {
+      const r = await axios.get(`${API}/groups`, { withCredentials: true });
+      setGroups(r.data.groups ?? []);
+      setActiveGroupId(r.data.active_group_id ?? null);
+    } catch { /* ignorieren */ }
+  }, []);
+
+  useEffect(() => { fetchGroups(); }, [fetchGroups]);
+
+  const handleSwitchGroup = async (groupId) => {
+    if (groupId === activeGroupId) { setGroupMenuOpen(false); return; }
+    try {
+      await axios.put(`${API}/groups/switch/${groupId}`, {}, { withCredentials: true });
+      setGroupMenuOpen(false);
+      window.location.reload();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Fehler beim Wechseln");
+    }
+  };
+
+  const activeGroup = groups.find(g => g.group_id === activeGroupId);
 
   const navGroups = [
     {
@@ -96,7 +122,7 @@ const Layout = ({ children }) => {
       {/* Desktop Sidebar */}
       <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-100 p-6 flex-col gap-2 z-50 hidden md:flex">
         {/* Logo */}
-        <Link to="/dashboard" className="flex items-center gap-3 mb-8">
+        <Link to="/dashboard" className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center">
             <ChefHat className="w-6 h-6 text-white" />
           </div>
@@ -104,6 +130,45 @@ const Layout = ({ children }) => {
             Kochplaner
           </span>
         </Link>
+
+        {/* Gruppen-Switcher */}
+        {groups.length > 0 && (
+          <div className="relative mb-4">
+            <button
+              onClick={() => setGroupMenuOpen(o => !o)}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-gray-100 transition-colors text-sm text-[var(--text-secondary)]"
+            >
+              <Users className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="flex-1 text-left truncate font-medium text-[var(--text-primary)]">
+                {activeGroup?.name ?? "Keine Gruppe"}
+              </span>
+              <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${groupMenuOpen ? "rotate-180" : ""}`} />
+            </button>
+            {groupMenuOpen && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                {groups.map(g => (
+                  <button
+                    key={g.group_id}
+                    onClick={() => handleSwitchGroup(g.group_id)}
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-sm text-left transition-colors"
+                  >
+                    <span className="flex-1 truncate text-[var(--text-primary)]">{g.name}</span>
+                    {g.group_id === activeGroupId && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
+                  </button>
+                ))}
+                <div className="border-t border-gray-100">
+                  <Link
+                    to="/group"
+                    onClick={() => setGroupMenuOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-sm text-emerald-600"
+                  >
+                    <Users className="w-4 h-4" /> Gruppen verwalten
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 overflow-y-auto">

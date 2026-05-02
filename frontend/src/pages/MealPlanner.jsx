@@ -15,7 +15,8 @@ import { toast } from "sonner";
 import {
   ChevronLeft, ChevronRight, Plus, X, Save, ShoppingCart,
   Coffee, UtensilsCrossed, Moon, ChefHat, ArrowLeft,
-  Search, Minus, GripVertical, Users, Copy, BookTemplate, Bookmark, CookingPot, Store
+  Search, Minus, GripVertical, Users, Copy, BookTemplate, Bookmark, CookingPot, Store,
+  ChevronDown, ChevronUp
 } from "lucide-react";
 import { format, startOfWeek, addDays, addWeeks, subWeeks } from "date-fns";
 import { de } from "date-fns/locale";
@@ -662,6 +663,99 @@ const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, onAddMeal, 
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Wochenlisten-Ansicht ─────────────────────────────────────────────────────
+const MEAL_META = {
+  breakfast: { label: "Frühstück", icon: Coffee, color: "text-amber-500 bg-amber-50" },
+  lunch:     { label: "Mittagessen", icon: UtensilsCrossed, color: "text-emerald-600 bg-emerald-50" },
+  dinner:    { label: "Abendessen", icon: Moon, color: "text-indigo-500 bg-indigo-50" },
+};
+
+const WeekListView = ({ days, mealPlan, recipes, onSlotClick }) => {
+  const [open, setOpen] = useState(true);
+
+  const getDayMeals = (dateStr) => {
+    const day = mealPlan?.days?.find(d => d.date === dateStr);
+    if (!day) return [];
+    return ["breakfast", "lunch", "dinner"].flatMap(mt =>
+      (day[mt] || []).map(m => ({ ...m, mealType: mt }))
+    );
+  };
+
+  const hasMeals = days.some(({ dateStr }) => getDayMeals(dateStr).length > 0);
+
+  if (!hasMeals) return null;
+
+  return (
+    <div className="mt-6">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 text-sm font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-3 transition-colors"
+      >
+        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        Wochenübersicht (Liste)
+      </button>
+      {open && (
+        <div className="space-y-3">
+          {days.map(({ date, dateStr }) => {
+            const meals = getDayMeals(dateStr);
+            if (meals.length === 0) return null;
+            const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
+            return (
+              <Card key={dateStr} className={`overflow-hidden ${isToday ? "ring-2 ring-emerald-300" : ""}`}>
+                <div className={`px-4 py-2 flex items-center justify-between ${isToday ? "bg-emerald-50" : "bg-[var(--bg-subtle)]"}`}>
+                  <span className={`font-semibold text-sm ${isToday ? "text-emerald-700" : "text-[var(--text-primary)]"}`}>
+                    {format(date, "EEEE, d. MMMM", { locale: de })}
+                    {isToday && <span className="ml-2 text-xs bg-emerald-200 text-emerald-700 px-1.5 py-0.5 rounded-full">Heute</span>}
+                  </span>
+                  <span className="text-xs text-[var(--text-muted)]">{meals.length} Gericht{meals.length !== 1 ? "e" : ""}</span>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {meals.map((meal, i) => {
+                    const meta = MEAL_META[meal.mealType];
+                    const recipe = recipes?.find(r => r.recipe_id === meal.recipe_id);
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => onSlotClick(dateStr, meal.mealType)}
+                      >
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.color}`}>
+                          <meta.icon className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-[var(--text-primary)] truncate block">
+                            {meal.recipe_name || "Unbekannt"}
+                          </span>
+                          {meal.assigned_to?.length > 0 && (
+                            <span className="text-xs text-[var(--text-muted)]">{meal.assigned_to.join(", ")}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 flex-shrink-0 text-xs text-[var(--text-muted)]">
+                          {meal.is_external ? (
+                            <span className="flex items-center gap-1 text-amber-600"><Store className="w-3.5 h-3.5" /> Außer Haus</span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <Users className="w-3.5 h-3.5" /> {meal.portions || 2}
+                            </span>
+                          )}
+                          {recipe?.image_url && (
+                            <img src={recipe.image_url} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── MealPlanner ─────────────────────────────────────────────────────────────
 const MealPlanner = () => {
   const [currentWeekStart, setCurrentWeekStart] = useState(
     startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -1173,7 +1267,13 @@ const MealPlanner = () => {
           </div>
         </div>
 
-        {/* Slot Detail Dialog (Overlay) */}
+        {/* ── Listenansicht ── */}
+        <WeekListView
+          days={days}
+          mealPlan={mealPlan}
+          recipes={recipes}
+          onSlotClick={handleSlotClick}
+        />
         {detailSlot && (
           <SlotDetailDialog
             open={!!detailSlot}

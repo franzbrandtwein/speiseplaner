@@ -12,7 +12,8 @@ class User(BaseModel):
     email: str
     name: str
     picture: Optional[str] = None
-    group_id: Optional[str] = None
+    group_id: Optional[str] = None       # aktive Gruppe
+    group_ids: List[str] = []            # alle Mitgliedschaften
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
