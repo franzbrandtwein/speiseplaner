@@ -356,26 +356,32 @@ const RecipeForm = () => {
         formData.ingredients
           .filter(i => i.name.trim())
           .map(async (ing) => {
-            if (ing.ingredient_id) return ing;
+            if (ing.ingredient_id) {
+              console.log("[Zutat] Bereits verknüpft:", ing.name, ing.ingredient_id);
+              return ing;
+            }
             const name = ing.name.trim();
+            console.log("[Zutat] Lookup für:", name);
             try {
-              // Erst lookup versuchen
               const { data: found } = await axios.get(
                 `${API}/ingredients/lookup?name=${encodeURIComponent(name)}`,
                 { withCredentials: true }
               );
+              console.log("[Zutat] Lookup-Ergebnis:", found);
               if (found) return { ...ing, ingredient_id: found.ingredient_id };
               // Nicht gefunden → neu anlegen
+              console.log("[Zutat] Neu anlegen:", name);
               try {
                 const { data: created } = await axios.post(
                   `${API}/ingredients`,
                   { name, category: "Sonstiges", shared_with_group: true },
                   { withCredentials: true }
                 );
-                newlyCreated.push(name);
+                console.log("[Zutat] Angelegt:", created);
+                newlyCreated.push(created);
                 return { ...ing, ingredient_id: created.ingredient_id };
               } catch (postErr) {
-                // 409: existiert doch (Race condition) → nochmal lookup
+                console.error("[Zutat] POST-Fehler:", postErr.response?.data, postErr);
                 if (postErr.response?.status === 409) {
                   const { data: retry } = await axios.get(
                     `${API}/ingredients/lookup?name=${encodeURIComponent(name)}`,
@@ -388,14 +394,15 @@ const RecipeForm = () => {
                 return ing;
               }
             } catch (lookupErr) {
-              console.error("Lookup-Fehler für", name, lookupErr);
+              console.error("[Zutat] Lookup-Fehler:", name, lookupErr);
               toast.warning(`Zutat "${name}" konnte nicht verknüpft werden`);
               return ing;
             }
           })
       );
       if (newlyCreated.length > 0) {
-        setAllIngredients(prev => [...prev, ...newlyCreated.map(n => ({ name: n, ingredient_id: "", category: "Sonstiges" }))]);
+        toast.success(`${newlyCreated.length} neue Zutat(en) in Stammdaten angelegt`);
+        setAllIngredients(prev => [...prev, ...newlyCreated]);
       }
 
       const payload = {
