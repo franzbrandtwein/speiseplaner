@@ -15,6 +15,26 @@ logger = logging.getLogger("kochplaner.llm")
 
 GEMINI_MODEL = "gemini-flash-latest"
 
+_MENU_IMAGE_PROMPT = """Du bist ein Experte für die Digitalisierung von Gastronomie-Daten. 
+Extrahiere die Informationen aus dem angehängten Bild der Speisekarte.
+
+Antworte ausschließlich im JSON-Format mit dieser Struktur:
+{
+  "restaurant_name": "String",
+  "kategorien": [
+    {
+      "name": "z.B. Vorspeisen",
+      "gerichte": [
+        { "name": "String", "preis": "String", "beschreibung": "String" }
+      ]
+    }
+  ]
+}
+
+- Wenn ein Preis nicht lesbar ist, schreibe "null".
+- Wenn die Währung fehlt, nehme "EUR" an.
+- Korrigiere offensichtliche Tippfehler im Text."""
+
 _client = None
 
 
@@ -39,7 +59,29 @@ def gemini_available() -> bool:
     return bool(os.environ.get("GEMINI_API_KEY"))
 
 
-async def call_gemini(prompt: str) -> Optional[str]:
+async def call_gemini_with_image(image_bytes: bytes, mime_type: str, prompt: str) -> Optional[str]:
+    """Ruft Gemini mit einem Bild auf (Vision-Modus) und gibt den Antwort-Text zurück."""
+    client = _get_client()
+    if not client:
+        return None
+    try:
+        from google.genai import types
+        contents = [
+            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            prompt,
+        ]
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: client.models.generate_content(model=GEMINI_MODEL, contents=contents),
+        )
+        return response.text
+    except Exception as e:
+        logger.error(f"Gemini Vision Fehler: {e}")
+        return None
+
+
+
     """Ruft Gemini auf und gibt den Antwort-Text zurück (oder None bei Fehler)."""
     client = _get_client()
     if not client:

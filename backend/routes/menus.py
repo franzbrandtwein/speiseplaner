@@ -363,6 +363,36 @@ def _classified_tokens_to_dishes(tokens: list[dict]) -> list[dict]:
     return dishes
 
 
+def _gemini_menu_to_tokens(data: dict) -> list[dict]:
+    """Konvertiert das strukturierte Gemini-JSON in die Wizard-Token-Liste.
+
+    Gemini-Struktur: {restaurant_name, kategorien: [{name, gerichte: [{name, preis, beschreibung}]}]}
+    Token-Klassen: 'gericht' | 'preis' | 'skip'
+    """
+    tokens: list[dict] = []
+    tid = 0
+    for kat in data.get("kategorien") or []:
+        kat_name = (kat.get("name") or "").strip()
+        if kat_name:
+            tokens.append({"id": tid, "text": kat_name, "class": "skip"})
+            tid += 1
+        for g in kat.get("gerichte") or []:
+            name = (g.get("name") or "").strip()
+            if not name:
+                continue
+            tokens.append({"id": tid, "text": name, "class": "gericht"})
+            tid += 1
+            preis = (g.get("preis") or "").strip()
+            if preis and preis.lower() != "null":
+                tokens.append({"id": tid, "text": preis, "class": "preis"})
+                tid += 1
+            beschreibung = (g.get("beschreibung") or "").strip()
+            if beschreibung and beschreibung.lower() != "null":
+                tokens.append({"id": tid, "text": beschreibung, "class": "skip"})
+                tid += 1
+    return tokens
+
+
 async def _tokenize_with_llm_or_heuristic(text: str) -> list[dict]:
     """Klassifiziert Speisekarten-Text via Gemini (Fallback: Heuristik).
     Gibt Token-Liste zurück: [{"id": int, "text": str, "class": "gericht"|"preis"|"skip"}]
@@ -456,10 +486,11 @@ async def save_classified_tokens(menu_id: str, request: Request, user: User = De
 async def extract_from_image(
     menu_id: str, file: UploadFile = File(...), user: User = Depends(get_current_user)
 ):
-    """OCR-Texterkennung aus Bild, liefert klassifizierte Tokens für den Wizard."""
-    import pytesseract
-    from PIL import Image as PILImage
-    import io
+    """Extrahiert Speisekarten-Daten aus einem Bild via Gemini Vision.
+    Liefert klassifizierte Tokens für den Wizard zurück.
+    Fallback: Tesseract OCR + heuristischer Tokenizer.
+    """
+    from llm import call_gemini_with_image, extract_json, gemini_available, _MENU_IMAGE_PROMPT
 
     menu = await db.menus.find_one({"menu_id": menu_id, **_scope_query(user)}, {"_id": 0})
     if not menu:
@@ -484,19 +515,37 @@ async def extract_from_image(
     except Exception as e:
         logger.warning(f"Could not save menu image: {e}")
 
-    # OCR
+    # Primär: Gemini Vision
+    if gemini_available():
+        response = await call_gemini_with_image(data, file.content_type, _MENU_IMAGE_PROMPT)
+        if response:
+            menu_data = extract_json(response)
+            if isinstance(menu_data, dict) and menu_data.get("kategorien"):
+                tokens = _gemini_menu_to_tokens(menu_data)
+                return {
+                    "tokens": tokens,
+                    "count": len(tokens),
+                    "image_url": image_url,
+                    "restaurant_name": menu_data.get("restaurant_name"),
+                }
+        logger.warning("Gemini Vision fehlgeschlagen, Fallback auf Tesseract")
+
+    # Fallback: Tesseract OCR
     try:
+        import io
+        import pytesseract
+        from PIL import Image as PILImage
         pil_img = PILImage.open(io.BytesIO(data))
         ocr_text = pytesseract.image_to_string(pil_img, lang="deu+eng")
     except Exception as e:
         logger.error(f"OCR error: {e}")
-        raise HTTPException(500, f"OCR fehlgeschlagen: {str(e)[:200]}")
+        raise HTTPException(500, f"Texterkennung fehlgeschlagen: {str(e)[:200]}")
 
     if not ocr_text.strip():
         raise HTTPException(422, "Kein Text im Bild erkannt. Bitte ein schärferes Foto verwenden.")
 
     tokens = await _tokenize_with_llm_or_heuristic(ocr_text)
-    return {"tokens": tokens, "count": len(tokens), "image_url": image_url}
+    return {"tokens": tokens, "count": len(tokens), "image_url": image_url, "restaurant_name": None}
 
 
 async def _save_extracted_dishes(menu: dict, dishes: list[dict], user: User) -> dict:
