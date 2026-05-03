@@ -131,53 +131,107 @@ const IngredientNameInput = ({ value, ingredientId, onChange, onCreateNew, allIn
   );
 };
 
-/** Combobox für Bezugsquelle mit Autocomplete aus bestehenden Werten */
-const PickupSourceInput = ({ value, onChange }) => {
-  const [suggestions, setSuggestions] = useState([]);
+/** Autocomplete für Bezugsquelle – gleicher Look wie IngredientNameInput */
+const PickupSourceInput = ({ value, sourceId, onChange, allSources }) => {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value ?? "");
+  const [creating, setCreating] = useState(false);
   const containerRef = useRef(null);
 
-  useEffect(() => {
-    axios.get(`${API}/recipes/pickup-sources/list`, { withCredentials: true })
-      .then(r => setSuggestions(r.data || []))
-      .catch(() => {});
-  }, []);
+  useEffect(() => { setQuery(value ?? ""); }, [value]);
 
-  const filtered = suggestions.filter(s =>
-    s.toLowerCase().includes((value || "").toLowerCase())
-  );
+  const suggestions = query.trim().length === 0
+    ? allSources.slice(0, 8)
+    : allSources.filter(s => s.name.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
 
-  useEffect(() => {
-    const handler = e => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+  const exactMatch = allSources.find(s => s.name.toLowerCase() === query.toLowerCase());
+
+  const handleSelect = (source) => {
+    setQuery(source.name);
+    onChange(source.name, source.source_id);
+    setOpen(false);
+  };
+
+  const handleInputChange = (e) => {
+    setQuery(e.target.value);
+    onChange(e.target.value, null);
+    setOpen(true);
+  };
+
+  const handleCreateNew = async () => {
+    const name = query.trim();
+    if (!name) return;
+    setCreating(true);
+    setOpen(false);
+    try {
+      const { data } = await axios.post(`${API}/sources`, { name, type: "other" }, { withCredentials: true });
+      setQuery(data.name);
+      onChange(data.name, data.source_id);
+      toast.success(`Bezugsquelle „${data.name}" angelegt`);
+    } catch {
+      toast.error("Bezugsquelle konnte nicht angelegt werden");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleBlur = useCallback(() => {
+    setTimeout(() => {
+      if (containerRef.current && !containerRef.current.contains(document.activeElement)) {
+        setOpen(false);
+      }
+    }, 150);
   }, []);
 
   return (
-    <div className="relative" ref={containerRef}>
-      <Input
-        value={value}
-        onChange={e => { onChange(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        placeholder="z.B. Pizzeria Mario, Lidl, Bäckerei Schmidt…"
-        className="input-field"
-        autoComplete="off"
-      />
-      {open && filtered.length > 0 && (
-        <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-md max-h-48 overflow-auto">
-          {filtered.map(s => (
-            <li
-              key={s}
-              className="px-3 py-2 cursor-pointer hover:bg-emerald-50 text-sm flex items-center justify-between"
-              onMouseDown={e => { e.preventDefault(); onChange(s); setOpen(false); }}
+    <div className="relative w-full" ref={containerRef}>
+      <div className={`flex items-center gap-1.5 border rounded-lg px-3 h-10 bg-white focus-within:ring-1 transition-colors ${
+        sourceId
+          ? "border-emerald-400 focus-within:ring-emerald-400"
+          : "border-gray-200 focus-within:border-emerald-400 focus-within:ring-emerald-400"
+      }`}>
+        {creating
+          ? <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          : sourceId && <Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+        }
+        <input
+          value={query}
+          onChange={handleInputChange}
+          onFocus={() => setOpen(true)}
+          onBlur={handleBlur}
+          placeholder="z.B. Pizzeria Mario, Lidl, Bäckerei Schmidt…"
+          className="flex-1 outline-none text-base bg-transparent text-[var(--text-primary)] placeholder:text-gray-400 min-w-0"
+          autoComplete="off"
+        />
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+          {suggestions.map(s => (
+            <button
+              key={s.source_id}
+              type="button"
+              onMouseDown={() => handleSelect(s)}
+              className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-emerald-50 text-left transition-colors"
             >
-              <span>{s}</span>
-              {s === value && <Check className="w-4 h-4 text-emerald-500" />}
-            </li>
+              <Check className={`w-3.5 h-3.5 flex-shrink-0 ${s.source_id === sourceId ? "text-emerald-500" : "text-transparent"}`} />
+              <span className="text-sm text-[var(--text-primary)] truncate">{s.name}</span>
+              <span className="text-xs text-[var(--text-muted)] ml-auto">{s.type}</span>
+            </button>
           ))}
-        </ul>
+          {query.trim() && !exactMatch && (
+            <button
+              type="button"
+              onMouseDown={handleCreateNew}
+              className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-amber-50 text-left border-t border-gray-100 transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span className="text-sm text-amber-700">Neu anlegen: <strong>{query.trim()}</strong></span>
+            </button>
+          )}
+          {suggestions.length === 0 && !query.trim() && (
+            <div className="px-4 py-3 text-sm text-[var(--text-muted)] text-center">Noch keine Bezugsquellen vorhanden</div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -196,6 +250,7 @@ const RecipeForm = () => {
   const [hasGroup, setHasGroup] = useState(false);
   const [allRecipes, setAllRecipes] = useState([]);
   const [allIngredients, setAllIngredients] = useState([]);
+  const [allSources, setAllSources] = useState([]);
   const [sideDishSearch, setSideDishSearch] = useState("");
   const [showSideDishDropdown, setShowSideDishDropdown] = useState(false);
   const [existingImages, setExistingImages] = useState([]);
@@ -225,22 +280,25 @@ const RecipeForm = () => {
     side_dishes: [],
     shared_with_group: false,
     is_pickup: false,
-    pickup_source: ""
+    pickup_source: "",
+    pickup_source_id: null
   });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [catRes, groupRes, recipesRes, ingredientsRes] = await Promise.all([
+        const [catRes, groupRes, recipesRes, ingredientsRes, sourcesRes] = await Promise.all([
           axios.get(`${API}/categories`, { withCredentials: true }),
           axios.get(`${API}/groups/my`, { withCredentials: true }),
           axios.get(`${API}/recipes`, { withCredentials: true }),
           axios.get(`${API}/ingredients`, { withCredentials: true }),
+          axios.get(`${API}/sources`, { withCredentials: true }),
         ]);
         setCategories(catRes.data);
         setHasGroup(groupRes.data.group !== null);
         setAllRecipes(recipesRes.data || []);
         setAllIngredients(ingredientsRes.data || []);
+        setAllSources(sourcesRes.data || []);
         
         if (isEditing) {
           const recipeRes = await axios.get(`${API}/recipes/${id}`, { withCredentials: true });
@@ -263,7 +321,8 @@ const RecipeForm = () => {
             side_dishes: recipe.side_dishes || [],
             shared_with_group: recipe.shared_with_group || false,
             is_pickup: recipe.is_pickup || false,
-            pickup_source: recipe.pickup_source || ""
+            pickup_source: recipe.pickup_source || "",
+            pickup_source_id: recipe.pickup_source_id || null
           });
           // Load imported recipe draft from sessionStorage
           const draft = sessionStorage.getItem('import_recipe_draft');
@@ -287,7 +346,8 @@ const RecipeForm = () => {
                 side_dishes: recipe.side_dishes || [],
                 shared_with_group: recipe.shared_with_group || false,
                 is_pickup: recipe.is_pickup || false,
-                pickup_source: recipe.pickup_source || ""
+                pickup_source: recipe.pickup_source || "",
+                pickup_source_id: recipe.pickup_source_id || null
               });
               sessionStorage.removeItem('import_recipe_draft');
               toast.success("Importiertes Rezept geladen – bitte prüfen und speichern.");
@@ -482,6 +542,7 @@ const RecipeForm = () => {
         cook_time: formData.cook_time ? parseInt(formData.cook_time) : null,
         cost_per_portion: formData.cost_per_portion ? parseFloat(formData.cost_per_portion) : null,
         pickup_source: formData.pickup_source?.trim() || null,
+        pickup_source_id: formData.pickup_source_id || null,
         ingredients: resolvedIngredients,
         instructions: formData.instructions.filter(i => i.trim()),
         nutrition: {
@@ -810,7 +871,12 @@ const RecipeForm = () => {
               <Label htmlFor="pickup_source">Wo wird das Gericht abgeholt?</Label>
               <PickupSourceInput
                 value={formData.pickup_source}
-                onChange={val => updateField("pickup_source", val)}
+                sourceId={formData.pickup_source_id}
+                onChange={(name, sid) => {
+                  updateField("pickup_source", name);
+                  updateField("pickup_source_id", sid);
+                }}
+                allSources={allSources}
               />
             </div>
           </Card>

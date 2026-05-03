@@ -66,6 +66,7 @@ class Recipe(BaseModel):
     shared_with_group: bool = False
     is_pickup: bool = False
     pickup_source: Optional[str] = None
+    pickup_source_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -88,6 +89,7 @@ class RecipeCreate(BaseModel):
     shared_with_group: bool = False
     is_pickup: bool = False
     pickup_source: Optional[str] = None
+    pickup_source_id: Optional[str] = None
 
 class Rating(BaseModel):
     model_config = ConfigDict(extra="ignore")
