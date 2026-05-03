@@ -172,7 +172,8 @@ const RecipeForm = () => {
     allergens: [],
     side_dishes: [],
     shared_with_group: false,
-    is_pickup: false
+    is_pickup: false,
+    pickup_source: ""
   });
 
   useEffect(() => {
@@ -209,7 +210,8 @@ const RecipeForm = () => {
             allergens: recipe.allergens || [],
             side_dishes: recipe.side_dishes || [],
             shared_with_group: recipe.shared_with_group || false,
-            is_pickup: recipe.is_pickup || false
+            is_pickup: recipe.is_pickup || false,
+            pickup_source: recipe.pickup_source || ""
           });
           // Load imported recipe draft from sessionStorage
           const draft = sessionStorage.getItem('import_recipe_draft');
@@ -232,7 +234,8 @@ const RecipeForm = () => {
                 allergens: recipe.allergens || [],
                 side_dishes: recipe.side_dishes || [],
                 shared_with_group: recipe.shared_with_group || false,
-                is_pickup: recipe.is_pickup || false
+                is_pickup: recipe.is_pickup || false,
+                pickup_source: recipe.pickup_source || ""
               });
               sessionStorage.removeItem('import_recipe_draft');
               toast.success("Importiertes Rezept geladen – bitte prüfen und speichern.");
@@ -426,6 +429,7 @@ const RecipeForm = () => {
         prep_time: formData.prep_time ? parseInt(formData.prep_time) : null,
         cook_time: formData.cook_time ? parseInt(formData.cook_time) : null,
         cost_per_portion: formData.cost_per_portion ? parseFloat(formData.cost_per_portion) : null,
+        pickup_source: formData.pickup_source?.trim() || null,
         ingredients: resolvedIngredients,
         instructions: formData.instructions.filter(i => i.trim()),
         nutrition: {
@@ -742,6 +746,26 @@ const RecipeForm = () => {
               </div>
             </div>
           </Card>
+
+          {/* Bezugsquelle – nur bei Abholung */}
+          {formData.is_pickup && (
+          <Card className="p-6 bg-white border-gray-100">
+            <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-amber-500" />
+              Bezugsquelle
+            </h2>
+            <div>
+              <Label htmlFor="pickup_source">Wo wird das Gericht abgeholt?</Label>
+              <Input
+                id="pickup_source"
+                value={formData.pickup_source}
+                onChange={e => updateField("pickup_source", e.target.value)}
+                placeholder="z.B. Pizzeria Mario, Lidl, Bäckerei Schmidt…"
+                className="input-field mt-1"
+              />
+            </div>
+          </Card>
+          )}
 
           {/* Ingredients – nur bei Selbst-kochen */}
           {!formData.is_pickup && (

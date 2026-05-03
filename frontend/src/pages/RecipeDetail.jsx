@@ -451,13 +451,19 @@ const RecipeDetail = () => {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Ingredients */}
+            {/* Ingredients / Bezugsquelle */}
             <Card className="p-6 bg-white border-gray-100 sticky top-6" data-testid="ingredients-section">
               {recipe.is_pickup ? (
-                <div className="flex flex-col items-center justify-center py-4 text-center gap-2">
-                  <ShoppingBag className="w-10 h-10 text-amber-400" />
-                  <p className="font-medium text-[var(--text-primary)]">Abholgerricht</p>
-                  <p className="text-sm text-[var(--text-muted)]">Dieses Gericht wird abgeholt – keine Zutaten hinterlegt.</p>
+                <div className="flex flex-col gap-3">
+                  <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                    <ShoppingBag className="w-5 h-5 text-amber-500" />
+                    Bezugsquelle
+                  </h2>
+                  {recipe.pickup_source ? (
+                    <p className="text-[var(--text-primary)] font-medium">{recipe.pickup_source}</p>
+                  ) : (
+                    <p className="text-[var(--text-muted)] text-sm">Keine Bezugsquelle hinterlegt</p>
+                  )}
                 </div>
               ) : (
                 <>
