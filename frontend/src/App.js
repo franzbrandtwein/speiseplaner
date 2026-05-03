@@ -20,6 +20,8 @@ import StapleItems from "./pages/StapleItems";
 import Pantry from "./pages/Pantry";
 import Sources from "./pages/Sources";
 import Ingredients from "./pages/Ingredients";
+import Menus from "./pages/Menus";
+import MenuDetail from "./pages/MenuDetail";
 import RecipePrint from "./pages/RecipePrint";
 import NutritionTracking from "./pages/NutritionTracking";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -285,6 +287,22 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <Sources />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/menus"
+        element={
+          <ProtectedRoute>
+            <Menus />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/menus/:id"
+        element={
+          <ProtectedRoute>
+            <MenuDetail />
           </ProtectedRoute>
         }
       />

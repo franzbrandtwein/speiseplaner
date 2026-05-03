@@ -324,3 +324,32 @@ class IngredientMasterUpdate(BaseModel):
     pack_sizes: Optional[List[PackSize]] = None
     source_ids: Optional[List[str]] = None
     shared_with_group: Optional[bool] = None
+
+
+# ============ SPEISEKARTEN ============
+
+class MenuCard(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    menu_id: str = Field(default_factory=lambda: f"menu_{uuid.uuid4().hex[:12]}")
+    user_id: str
+    group_id: Optional[str] = None
+    name: str
+    source_id: Optional[str] = None       # verknüpfte Bezugsquelle
+    images: List[str] = []                # gespeicherte Bildpfade
+    recipe_ids: List[str] = []            # verknüpfte Abholgerichte
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class MenuCreate(BaseModel):
+    name: str
+    source_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class MenuUpdate(BaseModel):
+    name: Optional[str] = None
+    source_id: Optional[str] = None
+    notes: Optional[str] = None
+    recipe_ids: Optional[List[str]] = None

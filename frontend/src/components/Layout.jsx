@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 import { 
   ChefHat, LayoutDashboard, BookOpen, Calendar, ShoppingCart, 
   LogOut, Menu, X, User, Sparkles, Users, RefreshCw, Bell, Package, Flame, Shield, Archive,
-  Database, MapPin, ChevronDown, Check
+  Database, MapPin, ChevronDown, Check, UtensilsCrossed
 } from "lucide-react";
 import InstallPrompt, { InstallButton } from "./InstallPrompt";
 import {
@@ -107,6 +107,7 @@ const Layout = ({ children }) => {
       items: [
         { path: "/ingredients", label: "Zutaten", icon: Database },
         { path: "/sources", label: "Bezugsquellen", icon: MapPin },
+        { path: "/menus", label: "Speisekarten", icon: UtensilsCrossed },
         { path: "/group", label: "Gruppe", icon: Users },
         { path: "/notifications", label: "Benachrichtigungen", icon: Bell },
         ...(isAdmin ? [{ path: "/admin", label: "Admin", icon: Shield }] : []),
