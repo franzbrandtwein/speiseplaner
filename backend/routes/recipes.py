@@ -326,51 +326,50 @@ def build_recipe_from_jsonld(jsonld: dict) -> dict:
     }
 
 
-async def parse_with_llm(html: str, url: str) -> Optional[dict]:
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        llm_key = os.environ.get('EMERGENT_LLM_KEY')
-        if not llm_key:
-            return None
-        clean = re.sub(r'<script[^>]*>.*?</script>', ' ', html, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r'<style[^>]*>.*?</style>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r'<nav[^>]*>.*?</nav>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r'<header[^>]*>.*?</header>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r'<footer[^>]*>.*?</footer>', ' ', clean, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r'<[^>]+>', ' ', clean)
-        clean = re.sub(r'&[a-z]+;', ' ', clean)
-        clean = re.sub(r'\s+', ' ', clean).strip()
-        clean = clean[:6000]
-
-        chat = LlmChat(
-            api_key=llm_key,
-            session_id=f"recipe_import_{uuid.uuid4().hex[:8]}",
-            system_message="""Du bist ein Rezept-Extraktor. Extrahiere Rezeptdaten aus dem gegebenen Text und gib exakt dieses JSON zurück (kein anderer Text):
-{
+_RECIPE_JSON_SCHEMA = """{
   "name": "string",
   "description": "string oder null",
   "ingredients": [{"name": "string", "amount": "string", "unit": "string"}],
   "instructions": ["string"],
   "portions": number,
-  "prep_time": number_in_minutes_or_null,
-  "cook_time": number_in_minutes_or_null,
+  "prep_time": Minuten_als_Zahl_oder_null,
+  "cook_time": Minuten_als_Zahl_oder_null,
   "difficulty": "leicht|mittel|schwer",
   "category": "Frühstück|Suppe|Salat|Hauptgericht|Dessert|Snack|Vorspeise|Getränk",
-  "nutrition": {"calories": number_or_null, "protein": number_or_null, "carbs": number_or_null, "fat": number_or_null, "fiber": null}
+  "nutrition": {"calories": Zahl_oder_null, "protein": Zahl_oder_null, "carbs": Zahl_oder_null, "fat": Zahl_oder_null, "fiber": Zahl_oder_null}
 }"""
-        ).with_model("openai", "gpt-4.1-mini")
 
-        msg = UserMessage(text=f"Extrahiere das Rezept von dieser URL: {url}\n\nSeitentext:\n{clean}")
-        response = await chat.send_message(msg)
 
-        json_match = re.search(r'\{[\s\S]*\}', response)
-        if json_match:
-            data = json.loads(json_match.group())
-            data.setdefault('allergens', [])
-            data.setdefault('shared_with_group', False)
-            return data
-    except Exception as e:
-        logger.error(f"LLM recipe parse error: {e}")
+def _clean_html(html: str, max_chars: int = 8000) -> str:
+    """Entfernt irrelevante HTML-Blöcke und gibt bereinigten Text zurück."""
+    for tag in ("script", "style", "nav", "header", "footer"):
+        html = re.sub(rf'<{tag}[^>]*>.*?</{tag}>', ' ', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<[^>]+>', ' ', html)
+    html = re.sub(r'&[a-z]+;', ' ', html)
+    html = re.sub(r'\s+', ' ', html).strip()
+    return html[:max_chars]
+
+
+async def parse_with_llm(html: str, url: str) -> Optional[dict]:
+    """Nutzt Gemini 1.5 Flash um ein Rezept aus HTML zu extrahieren."""
+    from llm import call_gemini, extract_json, gemini_available
+    if not gemini_available():
+        return None
+    clean = _clean_html(html)
+    prompt = (
+        f"Du bist ein Rezept-Extraktor. Extrahiere das Rezept von dieser URL: {url}\n\n"
+        f"Antworte ausschließlich mit diesem JSON (kein anderer Text):\n{_RECIPE_JSON_SCHEMA}\n\n"
+        f"Seitentext:\n{clean}"
+    )
+    response = await call_gemini(prompt)
+    if not response:
+        return None
+    data = extract_json(response)
+    if isinstance(data, dict) and data.get("name"):
+        data.setdefault("allergens", [])
+        data.setdefault("shared_with_group", False)
+        return data
+    logger.warning(f"Gemini lieferte kein verwertbares JSON für {url}")
     return None
 
 
@@ -469,8 +468,26 @@ async def import_from_clipboard(data: ClipboardImportRequest, user: User = Depen
     if len(text) > 50000:
         raise HTTPException(status_code=400, detail="Text ist zu lang (max 50.000 Zeichen)")
 
+    # Zuerst Gemini versuchen
+    from llm import call_gemini, extract_json, gemini_available
+    if gemini_available():
+        prompt = (
+            "Du bist ein Rezept-Extraktor. Analysiere diesen kopierten Rezepttext und extrahiere das Rezept.\n"
+            f"Antworte ausschließlich mit diesem JSON (kein anderer Text):\n{_RECIPE_JSON_SCHEMA}\n\n"
+            f"Rezepttext:\n{text[:8000]}"
+        )
+        response = await call_gemini(prompt)
+        if response:
+            recipe_data = extract_json(response)
+            if isinstance(recipe_data, dict) and recipe_data.get("name"):
+                recipe_data.setdefault("allergens", [])
+                recipe_data.setdefault("shared_with_group", False)
+                recipe_data["import_method"] = "clipboard-llm"
+                return {"success": True, "recipe": recipe_data, "method": "clipboard-llm"}
+
+    # Fallback: Heuristik
     recipe_data = _parse_recipe_text(text)
-    recipe_data['import_method'] = 'clipboard-heuristic'
+    recipe_data["import_method"] = "clipboard-heuristic"
     return {"success": True, "recipe": recipe_data, "method": "clipboard-heuristic"}
 
 

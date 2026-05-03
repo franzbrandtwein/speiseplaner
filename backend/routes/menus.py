@@ -363,9 +363,44 @@ def _classified_tokens_to_dishes(tokens: list[dict]) -> list[dict]:
     return dishes
 
 
+async def _tokenize_with_llm_or_heuristic(text: str) -> list[dict]:
+    """Klassifiziert Speisekarten-Text via Gemini (Fallback: Heuristik).
+    Gibt Token-Liste zurück: [{"id": int, "text": str, "class": "gericht"|"preis"|"skip"}]
+    """
+    from llm import call_gemini, extract_json, gemini_available
+    if gemini_available():
+        prompt = (
+            "Du bist ein Speisekarten-Parser. Klassifiziere jeden Eintrag in diesem Speisekarten-Text.\n"
+            "Antworte ausschließlich mit einem JSON-Array (kein anderer Text):\n"
+            '[{"id": 0, "text": "Bruschetta", "class": "gericht"}, {"id": 1, "text": "4,50", "class": "preis"}, ...]\n\n'
+            'Klassen:\n'
+            '- "gericht": Name eines Gerichts oder einer Speise\n'
+            '- "preis": Preis (z.B. "4,50" oder "€ 12.00")\n'
+            '- "skip": Überschriften, Kategorien, Trennzeichen, sonstige Zeilen\n\n'
+            f"Speisekarten-Text:\n{text[:4000]}"
+        )
+        response = await call_gemini(prompt)
+        if response:
+            data = extract_json(response)
+            if isinstance(data, list) and data and "text" in data[0]:
+                # IDs normalisieren und fehlende Felder ergänzen
+                valid = []
+                for i, item in enumerate(data):
+                    cls = item.get("class", "skip")
+                    if cls not in ("gericht", "preis", "skip"):
+                        cls = "skip"
+                    valid.append({"id": i, "text": str(item.get("text", "")), "class": cls})
+                return valid
+        logger.warning("Gemini Tokenisierung fehlgeschlagen, nutze Heuristik")
+
+    return _tokenize_menu_text(text)
+
+
 @router.post("/menus/{menu_id}/tokenize-text")
 async def tokenize_menu_text(menu_id: str, request: Request, user: User = Depends(get_current_user)):
-    """Gibt erkannte Textbausteine mit Auto-Klassifizierung zurück (kein Speichern)."""
+    """Gibt erkannte Textbausteine mit Auto-Klassifizierung zurück (kein Speichern).
+    Nutzt Gemini wenn verfügbar, sonst heuristischen Tokenizer als Fallback.
+    """
     menu = await db.menus.find_one({"menu_id": menu_id, **_scope_query(user)}, {"_id": 0})
     if not menu:
         raise HTTPException(404, "Speisekarte nicht gefunden")
@@ -375,7 +410,7 @@ async def tokenize_menu_text(menu_id: str, request: Request, user: User = Depend
     if len(text) < 5:
         raise HTTPException(400, "Text ist zu kurz")
 
-    tokens = _tokenize_menu_text(text)
+    tokens = await _tokenize_with_llm_or_heuristic(text)
     return {"tokens": tokens, "count": len(tokens)}
 
 
@@ -460,7 +495,7 @@ async def extract_from_image(
     if not ocr_text.strip():
         raise HTTPException(422, "Kein Text im Bild erkannt. Bitte ein schärferes Foto verwenden.")
 
-    tokens = _tokenize_menu_text(ocr_text)
+    tokens = await _tokenize_with_llm_or_heuristic(ocr_text)
     return {"tokens": tokens, "count": len(tokens), "image_url": image_url}
 
 
