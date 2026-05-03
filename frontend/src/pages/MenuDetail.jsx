@@ -98,14 +98,16 @@ const TokenRow = ({ token, onChange }) => {
 
 // ─── Extraktions-Wizard ───────────────────────────────────────────────────────
 const ExtractDialog = ({ open, onClose, menuId, onDone }) => {
-  const [step, setStep]     = useState(0); // 0=text, 1=classify
-  const [text, setText]     = useState("");
-  const [tokens, setTokens] = useState([]);
+  const [step, setStep]       = useState(0); // 0=input, 1=classify
+  const [inputMode, setInputMode] = useState("text"); // "text" | "image"
+  const [text, setText]       = useState("");
+  const [tokens, setTokens]   = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving]   = useState(false);
+  const fileRef = useRef();
 
   const handleClose = () => {
-    setText(""); setTokens([]); setStep(0); onClose();
+    setText(""); setTokens([]); setStep(0); setInputMode("text"); onClose();
   };
 
   const analyze = async () => {
@@ -120,6 +122,26 @@ const ExtractDialog = ({ open, onClose, menuId, onDone }) => {
       setStep(1);
     } catch (err) {
       toast.error(err.response?.data?.detail || "Analyse fehlgeschlagen");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const analyzeImage = async (file) => {
+    if (!file) return;
+    setLoading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const { data } = await axios.post(
+        `${API}/menus/${menuId}/extract-image`,
+        fd,
+        { withCredentials: true, headers: { "Content-Type": "multipart/form-data" } }
+      );
+      setTokens(data.tokens);
+      setStep(1);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "OCR fehlgeschlagen");
     } finally {
       setLoading(false);
     }
@@ -165,13 +187,58 @@ const ExtractDialog = ({ open, onClose, menuId, onDone }) => {
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {step === 0 ? (
-            <textarea
-              className="w-full h-52 border border-gray-200 rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-emerald-400"
-              placeholder={"Speisekarten-Text hier einfügen…\n\nBruschetta ......... 4,50\nSuppe des Tages ..... 5,90\nWiener Schnitzel ... 18,50"}
-              value={text}
-              onChange={e => setText(e.target.value)}
-              autoFocus
-            />
+            <div className="space-y-3">
+              {/* Tab-Wahl */}
+              <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+                <button
+                  onClick={() => setInputMode("text")}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-sm font-medium transition-all ${
+                    inputMode === "text" ? "bg-white shadow-sm text-[var(--text-primary)]" : "text-[var(--text-muted)]"
+                  }`}
+                >
+                  <ScanText className="w-3.5 h-3.5" /> Text eingeben
+                </button>
+                <button
+                  onClick={() => setInputMode("image")}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-sm font-medium transition-all ${
+                    inputMode === "image" ? "bg-white shadow-sm text-[var(--text-primary)]" : "text-[var(--text-muted)]"
+                  }`}
+                >
+                  <ImageIcon className="w-3.5 h-3.5" /> Foto hochladen
+                </button>
+              </div>
+
+              {inputMode === "text" ? (
+                <textarea
+                  className="w-full h-48 border border-gray-200 rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                  placeholder={"Speisekarten-Text hier einfügen…\n\nBruschetta ......... 4,50\nSuppe des Tages ..... 5,90\nWiener Schnitzel ... 18,50"}
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  autoFocus
+                />
+              ) : (
+                <div
+                  className="border-2 border-dashed border-gray-200 rounded-xl h-44 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => !loading && fileRef.current?.click()}
+                >
+                  {loading
+                    ? <div className="w-8 h-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                    : <>
+                        <ImageIcon className="w-10 h-10 text-gray-300 mb-2" />
+                        <span className="text-sm text-[var(--text-muted)]">Foto der Speisekarte auswählen</span>
+                        <span className="text-xs text-[var(--text-muted)] mt-1">Text wird automatisch erkannt (OCR)</span>
+                      </>
+                  }
+                </div>
+              )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => analyzeImage(e.target.files[0])}
+              />
+            </div>
           ) : (
             <div className="space-y-1">
               {tokens.map(token => (
@@ -183,17 +250,23 @@ const ExtractDialog = ({ open, onClose, menuId, onDone }) => {
 
         <div className="px-5 py-3 border-t bg-gray-50 flex items-center justify-between gap-3">
           {step === 0 ? (
-            <Button
-              className="btn-primary w-full"
-              onClick={analyze}
-              disabled={loading || text.trim().length < 5}
-            >
-              {loading
-                ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                : <ScanText className="w-4 h-4 mr-2" />
-              }
-              Analysieren
-            </Button>
+            inputMode === "text" ? (
+              <Button
+                className="btn-primary w-full"
+                onClick={analyze}
+                disabled={loading || text.trim().length < 5}
+              >
+                {loading
+                  ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  : <ScanText className="w-4 h-4 mr-2" />
+                }
+                Analysieren
+              </Button>
+            ) : (
+              <p className="text-xs text-[var(--text-muted)] w-full text-center">
+                Foto auswählen um OCR zu starten
+              </p>
+            )
           ) : (
             <>
               <Button variant="outline" size="sm" onClick={() => setStep(0)}>

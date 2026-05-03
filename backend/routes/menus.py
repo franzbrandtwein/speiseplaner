@@ -421,7 +421,11 @@ async def save_classified_tokens(menu_id: str, request: Request, user: User = De
 async def extract_from_image(
     menu_id: str, file: UploadFile = File(...), user: User = Depends(get_current_user)
 ):
-    """Extrahiert Gerichte aus einem Bild (OCR via LLM) und erstellt Abholgerichte."""
+    """OCR-Texterkennung aus Bild, liefert klassifizierte Tokens für den Wizard."""
+    import pytesseract
+    from PIL import Image as PILImage
+    import io
+
     menu = await db.menus.find_one({"menu_id": menu_id, **_scope_query(user)}, {"_id": 0})
     if not menu:
         raise HTTPException(404, "Speisekarte nicht gefunden")
@@ -436,6 +440,7 @@ async def extract_from_image(
     ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "jpg"
     image_id = uuid.uuid4().hex[:12]
     storage_path = f"{APP_NAME}/menus/{menu_id}/{image_id}.{ext}"
+    image_url = None
     try:
         put_object(storage_path, data, file.content_type)
         image_url = f"/api/images/{storage_path}"
@@ -444,7 +449,19 @@ async def extract_from_image(
     except Exception as e:
         logger.warning(f"Could not save menu image: {e}")
 
-    raise HTTPException(501, "Automatische Texterkennung aus Bildern ist nicht verfügbar. Bitte Text manuell eingeben.")
+    # OCR
+    try:
+        pil_img = PILImage.open(io.BytesIO(data))
+        ocr_text = pytesseract.image_to_string(pil_img, lang="deu+eng")
+    except Exception as e:
+        logger.error(f"OCR error: {e}")
+        raise HTTPException(500, f"OCR fehlgeschlagen: {str(e)[:200]}")
+
+    if not ocr_text.strip():
+        raise HTTPException(422, "Kein Text im Bild erkannt. Bitte ein schärferes Foto verwenden.")
+
+    tokens = _tokenize_menu_text(ocr_text)
+    return {"tokens": tokens, "count": len(tokens), "image_url": image_url}
 
 
 async def _save_extracted_dishes(menu: dict, dishes: list[dict], user: User) -> dict:
