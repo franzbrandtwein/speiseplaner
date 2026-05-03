@@ -10,9 +10,10 @@ import {
   DialogTitle,
   DialogDescription,
 } from "./ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
   Download, Loader2, ChefHat, Clock, Users, AlertCircle,
-  CheckCircle2, ExternalLink, X, Edit2
+  CheckCircle2, ExternalLink, X, Edit2, Info,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -302,11 +303,32 @@ const RecipeImportDialog = ({ open, onClose, onImported }) => {
           {/* Clipboard Input */}
           {mode === "clipboard" && (
           <div className="space-y-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-xs font-medium text-gray-500">Rezepttext einfügen</span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3.5 h-3.5 text-gray-400 cursor-help hover:text-gray-600 transition-colors" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-xs text-xs leading-relaxed">
+                    <p className="font-semibold mb-1">So funktioniert die Texterkennung:</p>
+                    <ul className="space-y-0.5 list-disc list-inside">
+                      <li>Erste Zeile = Rezeptname</li>
+                      <li>Zutaten mit Menge: <em>200 g Mehl</em></li>
+                      <li>Schritte nummeriert: <em>1. Wasser aufsetzen…</em></li>
+                      <li>Oder Überschriften: <em>Zutaten / Zubereitung</em></li>
+                      <li>Portionen: <em>für 4 Personen</em></li>
+                    </ul>
+                    <p className="mt-1.5 text-gray-300">Tipp: Text direkt von der Rezeptseite kopieren.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <textarea
               value={clipText}
               onChange={(e) => { setClipText(e.target.value); setError(""); }}
-              placeholder={"Rezepttext hier einfügen...\n\nKopiere den Text von der Rezept-Seite (z.B. REWE, HelloFresh) und füge ihn hier ein. Die KI erkennt automatisch Zutaten, Schritte und Nährwerte."}
-              className="w-full h-40 border border-gray-200 rounded-xl p-3 text-sm resize-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300 outline-none"
+              placeholder={"Rezepttext hier einfügen…\n\nBeispiel:\nSpaghetti Carbonara\nFür 4 Personen\n\nZutaten:\n400 g Spaghetti\n200 g Speck\n4 Eier\n\nZubereitung:\n1. Wasser aufsetzen…"}
+              className="w-full h-44 border border-gray-200 rounded-xl p-3 text-sm resize-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300 outline-none"
               disabled={loading}
               data-testid="import-clipboard-textarea"
             />
@@ -318,9 +340,9 @@ const RecipeImportDialog = ({ open, onClose, onImported }) => {
               data-testid="import-clipboard-parse"
             >
               {loading ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Wird analysiert...</>
+                <><Loader2 className="w-4 h-4 animate-spin" /> Wird erkannt…</>
               ) : (
-                <><Download className="w-4 h-4" /> Mit KI analysieren</>
+                <><Download className="w-4 h-4" /> Rezept erkennen</>
               )}
             </Button>
           </div>

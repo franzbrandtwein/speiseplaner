@@ -469,63 +469,186 @@ async def import_from_clipboard(data: ClipboardImportRequest, user: User = Depen
     if len(text) > 50000:
         raise HTTPException(status_code=400, detail="Text ist zu lang (max 50.000 Zeichen)")
 
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
-        prompt = f"""Du bist ein Rezept-Parser. Extrahiere aus dem folgenden Text alle Rezeptinformationen und gib sie als JSON zurück.
+    recipe_data = _parse_recipe_text(text)
+    recipe_data['import_method'] = 'clipboard-heuristic'
+    return {"success": True, "recipe": recipe_data, "method": "clipboard-heuristic"}
 
-Format:
-{{
-  "name": "Rezeptname",
-  "description": "Kurzbeschreibung (optional)",
-  "category": "Kategorie (z.B. Hauptgericht, Vorspeise, Dessert, Snack)",
-  "portions": 4,
-  "prep_time": 15,
-  "cook_time": 30,
-  "ingredients": [
-    {{"name": "Zutat", "amount": "200", "unit": "g"}}
-  ],
-  "instructions": ["Schritt 1", "Schritt 2"],
-  "nutrition": {{
-    "calories": 450,
-    "protein": 25,
-    "carbs": 50,
-    "fat": 15,
-    "fiber": 5
-  }}
-}}
 
-Falls Nährwerte nicht angegeben sind, schätze sie basierend auf den Zutaten.
-Falls Einheiten fehlen, verwende sinnvolle Standardwerte.
-Antworte NUR mit dem JSON, kein anderer Text.
+# ─── Heuristischer Rezept-Parser ─────────────────────────────────────────────
 
-Rezepttext:
-{text[:15000]}"""
+# Maßeinheiten die in Zutatenzeilen vorkommen
+_UNITS = (
+    "g|kg|ml|l|cl|dl|TL|EL|Tasse|Stück|Stk|Prise|Msp|Bund|Scheibe|Scheiben|"
+    "Dose|Glas|Pkg|Packung|Becher|Zehe|Zehen|Blatt|Blätter|Zweig|Zweige|"
+    "Handvoll|Tropfen|Schuss"
+)
+_UNIT_RE = re.compile(
+    rf'^\s*(\d[\d,\.]*)\s*({_UNITS})\.?\s+(.+)$',
+    re.IGNORECASE
+)
+_AMOUNT_NO_UNIT_RE = re.compile(r'^\s*(\d[\d,\.]*)\s+(.+)$')
+_STEP_RE = re.compile(r'^\s*(\d+)\s*[\.:\)]\s*(.+)$')
+_PORTIONS_RE = re.compile(r'(\d+)\s*(?:Portion(?:en)?|Person(?:en)?|Personen)', re.IGNORECASE)
+_TIME_RE = re.compile(
+    r'(?:(?:Zubereitung(?:szeit)?|Vorbereitung|Vorbereitungszeit)[:\s]+)?(\d+)\s*(?:Min(?:uten?)?|Std\.?)',
+    re.IGNORECASE
+)
+_COOK_TIME_RE = re.compile(
+    r'(?:Koch(?:zeit)?|Back(?:zeit)?|Garzeit|Ofenzeit)[:\s]+(\d+)\s*(?:Min(?:uten?)?)',
+    re.IGNORECASE
+)
+_SECTION_HEADERS = re.compile(
+    r'^(?:Zutaten|Zubereitung|Zubereitunsschritte|Schritte|Anleitung|So geht\'s|Und so geht\'s)'
+    r'\s*:?\s*$',
+    re.IGNORECASE
+)
+_SKIP_LINES = re.compile(
+    r'^(?:Nährwerte?|Nutrition|Kalorien|Bewertung|Kommentar|Tipp|Hinweis|Drucken|Speichern|Teilen|'
+    r'Portion(?:en)?:|Vorbereitungszeit:|Kochzeit:|Zubereitungszeit:|Schwierigkeitsgrad:)',
+    re.IGNORECASE
+)
 
-        llm = LlmChat(
-            api_key=EMERGENT_KEY,
-            session_id=f"clipboard_import_{uuid.uuid4().hex[:8]}",
-            system_message="Du bist ein Rezept-Parser. Antworte NUR mit validem JSON."
-        )
-        msg = UserMessage(text=prompt)
-        response = await llm.send_message(msg)
 
-        resp_text = response.strip()
-        if resp_text.startswith("```"):
-            resp_text = resp_text.split("\n", 1)[1] if "\n" in resp_text else resp_text[3:]
-        if resp_text.endswith("```"):
-            resp_text = resp_text[:-3]
-        if resp_text.startswith("json"):
-            resp_text = resp_text[4:]
+def _parse_recipe_text(text: str) -> dict:
+    """Heuristischer Parser für kopierten Rezepttext ohne LLM."""
+    lines = [l.rstrip() for l in text.splitlines()]
 
-        recipe_data = json.loads(resp_text.strip())
-        recipe_data['import_method'] = 'clipboard-llm'
-        return {"success": True, "recipe": recipe_data, "method": "clipboard-llm"}
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=422, detail="Rezept konnte nicht aus dem Text extrahiert werden. Bitte versuche es mit einem klareren Textformat.")
-    except Exception as e:
-        logger.error(f"Clipboard import LLM error: {e}")
-        raise HTTPException(status_code=500, detail=f"Fehler bei der KI-Analyse: {str(e)[:200]}")
+    name = ""
+    description = ""
+    ingredients: list[dict] = []
+    instructions: list[str] = []
+    portions: Optional[int] = None
+    prep_time: Optional[int] = None
+    cook_time: Optional[int] = None
+
+    # Name = erste nicht-leere Zeile
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not _SKIP_LINES.match(stripped):
+            name = stripped
+            break
+
+    # Zeiten und Portionen aus dem gesamten Text
+    for line in lines:
+        stripped = line.strip()
+        if not portions:
+            m = _PORTIONS_RE.search(stripped)
+            if m:
+                try:
+                    portions = int(m.group(1))
+                except ValueError:
+                    pass
+        if not cook_time:
+            m = _COOK_TIME_RE.search(stripped)
+            if m:
+                try:
+                    cook_time = int(m.group(1))
+                except ValueError:
+                    pass
+        if not prep_time:
+            m = _TIME_RE.search(stripped)
+            if m and not _COOK_TIME_RE.search(stripped):
+                try:
+                    prep_time = int(m.group(1))
+                except ValueError:
+                    pass
+
+    # Zweiter Pass: Zutaten und Schritte erkennen
+    # Strategie: Abschnitt-Erkennung via Überschriften,
+    # dann Fallback auf Zeileninhalt
+    mode = "scan"  # scan | ingredients | instructions
+    numbered_steps: list[tuple[int, str]] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        if _SECTION_HEADERS.match(stripped):
+            header = stripped.lower()
+            if any(w in header for w in ["zutat", "ingredient"]):
+                mode = "ingredients"
+            elif any(w in header for w in ["zubereitung", "schritt", "anleitung", "geht"]):
+                mode = "instructions"
+            continue
+
+        if _SKIP_LINES.match(stripped):
+            continue
+
+        # Nummerierter Schritt erkannt → immer als Instruction
+        step_m = _STEP_RE.match(stripped)
+        if step_m:
+            numbered_steps.append((int(step_m.group(1)), step_m.group(2).strip()))
+            continue
+
+        # Im Zutaten-Modus: Zeile als Zutat parsen
+        if mode == "ingredients":
+            ing = _parse_ingredient_line(stripped)
+            if ing:
+                ingredients.append(ing)
+            continue
+
+        # Im Anweisungs-Modus: Zeile als Schritt
+        if mode == "instructions":
+            if len(stripped) > 15:
+                instructions.append(stripped)
+            continue
+
+        # Scan-Modus: Zutatenzeile anhand Muster erkennen
+        if mode == "scan":
+            ing = _parse_ingredient_line(stripped)
+            if ing:
+                ingredients.append(ing)
+
+    # Nummerierte Schritte sortieren und verwenden wenn keine anderen gefunden
+    if numbered_steps:
+        numbered_steps.sort(key=lambda x: x[0])
+        instructions = [s for _, s in numbered_steps]
+
+    # Kurztext als Beschreibung: erste sinnvolle Zeile nach dem Namen
+    for line in lines[1:6]:
+        stripped = line.strip()
+        if (stripped and stripped != name
+                and not _SKIP_LINES.match(stripped)
+                and not _SECTION_HEADERS.match(stripped)
+                and not _parse_ingredient_line(stripped)
+                and not _STEP_RE.match(stripped)
+                and len(stripped) > 20):
+            description = stripped
+            break
+
+    return {
+        "name": name or "Importiertes Rezept",
+        "description": description,
+        "category": "Hauptgericht",
+        "difficulty": "mittel",
+        "portions": portions or 4,
+        "prep_time": prep_time,
+        "cook_time": cook_time,
+        "ingredients": ingredients,
+        "instructions": instructions,
+        "nutrition": None,
+        "allergens": [],
+        "shared_with_group": False,
+    }
+
+
+def _parse_ingredient_line(line: str) -> Optional[dict]:
+    """Versucht eine Zeile als Zutat mit Menge/Einheit/Name zu parsen."""
+    m = _UNIT_RE.match(line)
+    if m:
+        return {
+            "amount": m.group(1).replace(',', '.'),
+            "unit": m.group(2),
+            "name": m.group(3).strip(),
+        }
+    m = _AMOUNT_NO_UNIT_RE.match(line)
+    if m:
+        rest = m.group(2).strip()
+        # Nicht als Zutat werten wenn Rest zu lang (eher ein Satz)
+        if len(rest) < 60 and not rest[0].isupper():
+            return {"amount": m.group(1).replace(',', '.'), "unit": "", "name": rest}
+    return None
 
 
 # ============ SINGLE RECIPE / UPDATE / DELETE ============
