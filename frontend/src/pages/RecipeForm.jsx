@@ -310,9 +310,8 @@ const RecipeForm = () => {
   };
 
   const removeIngredient = (index) => {
-    if (formData.ingredients.length > 1) {
-      updateField("ingredients", formData.ingredients.filter((_, i) => i !== index));
-    }
+    const filtered = formData.ingredients.filter((_, i) => i !== index);
+    updateField("ingredients", filtered.length > 0 ? filtered : [{ name: "", amount: "", unit: "g", ingredient_id: null }]);
   };
 
   const updateInstruction = (index, value) => {
@@ -799,7 +798,6 @@ const RecipeForm = () => {
                       variant="ghost"
                       size="icon"
                       onClick={() => removeIngredient(idx)}
-                      disabled={formData.ingredients.length === 1}
                       className="text-red-500 hover:bg-red-50 flex-shrink-0"
                     >
                       <Trash2 className="w-4 h-4" />
