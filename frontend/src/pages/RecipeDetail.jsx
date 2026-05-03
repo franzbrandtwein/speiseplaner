@@ -351,7 +351,7 @@ const RecipeDetail = () => {
             </div>
 
             {/* Instructions */}
-            <Card className="p-6 bg-white border-gray-100">
+            {!recipe.is_pickup && <Card className="p-6 bg-white border-gray-100">
               <h2 className="font-heading text-2xl font-semibold text-[var(--text-primary)] mb-6">
                 Zubereitung
               </h2>
@@ -369,7 +369,7 @@ const RecipeDetail = () => {
               ) : (
                 <p className="text-[var(--text-muted)]">Keine Zubereitungsschritte angegeben</p>
               )}
-            </Card>
+            </Card>}
 
             {/* Ratings Section */}
             <Card className="p-6 bg-white border-gray-100" data-testid="ratings-section">

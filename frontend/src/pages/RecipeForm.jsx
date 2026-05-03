@@ -844,7 +844,7 @@ const RecipeForm = () => {
           )} {/* Ende !is_pickup Zutaten */}
 
           {/* Instructions */}
-          <Card className="p-6 bg-white border-gray-100">
+          {!formData.is_pickup && <Card className="p-6 bg-white border-gray-100">
             <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] mb-6">
               Zubereitung
             </h2>
@@ -886,7 +886,7 @@ const RecipeForm = () => {
             >
               <Plus className="w-4 h-4 mr-2" /> Schritt hinzufügen
             </Button>
-          </Card>
+          </Card>}
 
           {/* Nutrition */}
           <Card className="p-6 bg-white border-gray-100">
