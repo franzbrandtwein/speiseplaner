@@ -18,7 +18,7 @@ import {
 import { Checkbox } from "../components/ui/checkbox";
 import { Switch } from "../components/ui/switch";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, Trash2, Save, Upload, Users, Search, X, Check, Sparkles } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, Upload, Users, Search, X, Check, Sparkles, ShoppingBag } from "lucide-react";
 
 /** Autocomplete-Eingabefeld für Zutaten mit Stammdaten-Verknüpfung */
 const IngredientNameInput = ({ value, ingredientId, onChange, onCreateNew, allIngredients, idx }) => {
@@ -171,7 +171,8 @@ const RecipeForm = () => {
     },
     allergens: [],
     side_dishes: [],
-    shared_with_group: false
+    shared_with_group: false,
+    is_pickup: false
   });
 
   useEffect(() => {
@@ -207,9 +208,9 @@ const RecipeForm = () => {
             nutrition: recipe.nutrition || { calories: "", protein: "", carbs: "", fat: "", fiber: "" },
             allergens: recipe.allergens || [],
             side_dishes: recipe.side_dishes || [],
-            shared_with_group: recipe.shared_with_group || false
+            shared_with_group: recipe.shared_with_group || false,
+            is_pickup: recipe.is_pickup || false
           });
-        } else if (fromImport) {
           // Load imported recipe draft from sessionStorage
           const draft = sessionStorage.getItem('import_recipe_draft');
           if (draft) {
@@ -230,7 +231,8 @@ const RecipeForm = () => {
                 nutrition: recipe.nutrition || { calories: "", protein: "", carbs: "", fat: "", fiber: "" },
                 allergens: recipe.allergens || [],
                 side_dishes: recipe.side_dishes || [],
-                shared_with_group: recipe.shared_with_group || false
+                shared_with_group: recipe.shared_with_group || false,
+                is_pickup: recipe.is_pickup || false
               });
               sessionStorage.removeItem('import_recipe_draft');
               toast.success("Importiertes Rezept geladen – bitte prüfen und speichern.");
@@ -721,10 +723,29 @@ const RecipeForm = () => {
                   />
                 </div>
               )}
+
+              {/* Gerichtstyp: Selbst kochen / Abholung */}
+              <div className="flex items-center justify-between p-4 bg-amber-50 rounded-xl border border-amber-200">
+                <div className="flex items-center gap-3">
+                  <ShoppingBag className="w-5 h-5 text-amber-600" />
+                  <div>
+                    <p className="font-medium text-[var(--text-primary)]">Abholgerricht</p>
+                    <p className="text-sm text-[var(--text-muted)]">
+                      Wird abgeholt – keine Zutaten notwendig, Beilagen möglich
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={formData.is_pickup}
+                  onCheckedChange={(checked) => updateField("is_pickup", checked)}
+                  data-testid="is-pickup-switch"
+                />
+              </div>
             </div>
           </Card>
 
-          {/* Ingredients */}
+          {/* Ingredients – nur bei Selbst-kochen */}
+          {!formData.is_pickup && (
           <Card className="p-6 bg-white border-gray-100">
             <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] mb-6">
               Zutaten
@@ -798,6 +819,7 @@ const RecipeForm = () => {
               <Plus className="w-4 h-4 mr-2" /> Zutat hinzufügen
             </Button>
           </Card>
+          )} {/* Ende !is_pickup Zutaten */}
 
           {/* Instructions */}
           <Card className="p-6 bg-white border-gray-100">

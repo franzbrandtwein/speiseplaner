@@ -64,6 +64,7 @@ class Recipe(BaseModel):
     cost_per_portion: Optional[float] = None
     side_dishes: List[str] = []
     shared_with_group: bool = False
+    is_pickup: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -84,8 +85,7 @@ class RecipeCreate(BaseModel):
     cost_per_portion: Optional[float] = None
     side_dishes: List[str] = []
     shared_with_group: bool = False
-
-
+    is_pickup: bool = False
 class Rating(BaseModel):
     model_config = ConfigDict(extra="ignore")
     rating_id: str = Field(default_factory=lambda: f"rating_{uuid.uuid4().hex[:12]}")

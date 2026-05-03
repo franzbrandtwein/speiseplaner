@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { 
   ChefHat, Clock, Users, Star, ArrowLeft, Edit, Trash2, 
   AlertTriangle, DollarSign, Flame, UtensilsCrossed, Upload, X, ChevronLeft, ChevronRight,
-  Database
+  Database, ShoppingBag
 } from "lucide-react";
 import {
   AlertDialog,
@@ -256,6 +256,12 @@ const RecipeDetail = () => {
                 <span className="capitalize px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">
                   {recipe.difficulty}
                 </span>
+                {recipe.is_pickup && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
+                    <ShoppingBag className="w-3.5 h-3.5" />
+                    Abholung
+                  </span>
+                )}
               </div>
               
               <h1 className="font-heading text-3xl sm:text-4xl font-bold text-[var(--text-primary)] mb-4">
@@ -447,26 +453,36 @@ const RecipeDetail = () => {
           <div className="space-y-6">
             {/* Ingredients */}
             <Card className="p-6 bg-white border-gray-100 sticky top-6" data-testid="ingredients-section">
-              <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] mb-4">
-                Zutaten
-              </h2>
-              <p className="text-sm text-[var(--text-muted)] mb-4">
-                für {recipe.portions} Portionen
-              </p>
-              
-              {recipe.ingredients?.length > 0 ? (
-                <ul className="space-y-3">
-                  {recipe.ingredients.map((ing, idx) => (
-                    <li key={idx} className="flex justify-between py-2 border-b border-gray-50 last:border-0">
-                      <span className="text-[var(--text-primary)]">{ing.name}</span>
-                      <span className="text-[var(--text-secondary)] font-mono text-sm">
-                        {ing.amount} {ing.unit}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+              {recipe.is_pickup ? (
+                <div className="flex flex-col items-center justify-center py-4 text-center gap-2">
+                  <ShoppingBag className="w-10 h-10 text-amber-400" />
+                  <p className="font-medium text-[var(--text-primary)]">Abholgerricht</p>
+                  <p className="text-sm text-[var(--text-muted)]">Dieses Gericht wird abgeholt – keine Zutaten hinterlegt.</p>
+                </div>
               ) : (
-                <p className="text-[var(--text-muted)]">Keine Zutaten angegeben</p>
+                <>
+                  <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] mb-4">
+                    Zutaten
+                  </h2>
+                  <p className="text-sm text-[var(--text-muted)] mb-4">
+                    für {recipe.portions} Portionen
+                  </p>
+                  
+                  {recipe.ingredients?.length > 0 ? (
+                    <ul className="space-y-3">
+                      {recipe.ingredients.map((ing, idx) => (
+                        <li key={idx} className="flex justify-between py-2 border-b border-gray-50 last:border-0">
+                          <span className="text-[var(--text-primary)]">{ing.name}</span>
+                          <span className="text-[var(--text-secondary)] font-mono text-sm">
+                            {ing.amount} {ing.unit}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-[var(--text-muted)]">Keine Zutaten angegeben</p>
+                  )}
+                </>
               )}
             </Card>
 
