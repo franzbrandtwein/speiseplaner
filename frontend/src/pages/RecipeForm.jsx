@@ -131,6 +131,58 @@ const IngredientNameInput = ({ value, ingredientId, onChange, onCreateNew, allIn
   );
 };
 
+/** Combobox für Bezugsquelle mit Autocomplete aus bestehenden Werten */
+const PickupSourceInput = ({ value, onChange }) => {
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    axios.get(`${API}/recipes/pickup-sources/list`, { withCredentials: true })
+      .then(r => setSuggestions(r.data || []))
+      .catch(() => {});
+  }, []);
+
+  const filtered = suggestions.filter(s =>
+    s.toLowerCase().includes((value || "").toLowerCase())
+  );
+
+  useEffect(() => {
+    const handler = e => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <Input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="z.B. Pizzeria Mario, Lidl, Bäckerei Schmidt…"
+        className="input-field"
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-md max-h-48 overflow-auto">
+          {filtered.map(s => (
+            <li
+              key={s}
+              className="px-3 py-2 cursor-pointer hover:bg-emerald-50 text-sm flex items-center justify-between"
+              onMouseDown={e => { e.preventDefault(); onChange(s); setOpen(false); }}
+            >
+              <span>{s}</span>
+              {s === value && <Check className="w-4 h-4 text-emerald-500" />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
 const RecipeForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -756,12 +808,9 @@ const RecipeForm = () => {
             </h2>
             <div>
               <Label htmlFor="pickup_source">Wo wird das Gericht abgeholt?</Label>
-              <Input
-                id="pickup_source"
+              <PickupSourceInput
                 value={formData.pickup_source}
-                onChange={e => updateField("pickup_source", e.target.value)}
-                placeholder="z.B. Pizzeria Mario, Lidl, Bäckerei Schmidt…"
-                className="input-field mt-1"
+                onChange={val => updateField("pickup_source", val)}
               />
             </div>
           </Card>

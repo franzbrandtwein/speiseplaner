@@ -528,6 +528,36 @@ Rezepttext:
         raise HTTPException(status_code=500, detail=f"Fehler bei der KI-Analyse: {str(e)[:200]}")
 
 
+# ============ PICKUP SOURCES ============
+
+@router.get("/recipes/pickup-sources/list")
+async def get_pickup_sources(user: User = Depends(get_current_user)):
+    """Gibt alle eindeutigen Bezugsquellen zurück, auf die der User Zugriff hat."""
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id")
+
+    if group_id:
+        group = await db.groups.find_one({"group_id": group_id}, {"_id": 0})
+        member_ids = group.get("member_ids", []) if group else []
+        base_query = {
+            "is_pickup": True,
+            "pickup_source": {"$ne": None, "$exists": True, "$ne": ""},
+            "$or": [
+                {"user_id": user.user_id},
+                {"user_id": {"$in": member_ids}, "shared_with_group": True}
+            ]
+        }
+    else:
+        base_query = {
+            "user_id": user.user_id,
+            "is_pickup": True,
+            "pickup_source": {"$nin": [None, ""]},
+        }
+
+    sources = await db.recipes.distinct("pickup_source", base_query)
+    return sorted([s for s in sources if s])
+
+
 # ============ SINGLE RECIPE / UPDATE / DELETE ============
 
 @router.get("/recipes/{recipe_id}")
