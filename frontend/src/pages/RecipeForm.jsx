@@ -428,7 +428,7 @@ const RecipeForm = () => {
         ingredients: resolvedIngredients,
         instructions: formData.instructions.filter(i => i.trim()),
         nutrition: {
-          calories: formData.nutrition.calories ? parseInt(formData.nutrition.calories) : null,
+          calories: formData.nutrition.calories ? parseFloat(formData.nutrition.calories) : null,
           protein: formData.nutrition.protein ? parseFloat(formData.nutrition.protein) : null,
           carbs: formData.nutrition.carbs ? parseFloat(formData.nutrition.carbs) : null,
           fat: formData.nutrition.fat ? parseFloat(formData.nutrition.fat) : null,
@@ -856,6 +856,7 @@ const RecipeForm = () => {
                 <Input
                   type="number"
                   min="0"
+                  step="0.01"
                   value={formData.nutrition.calories ?? ""}
                   onChange={e => updateNutrition("calories", e.target.value)}
                   className="input-field mt-1"
@@ -866,7 +867,7 @@ const RecipeForm = () => {
                 <Input
                   type="number"
                   min="0"
-                  step="0.1"
+                  step="0.01"
                   value={formData.nutrition.protein ?? ""}
                   onChange={e => updateNutrition("protein", e.target.value)}
                   className="input-field mt-1"
@@ -877,7 +878,7 @@ const RecipeForm = () => {
                 <Input
                   type="number"
                   min="0"
-                  step="0.1"
+                  step="0.01"
                   value={formData.nutrition.carbs ?? ""}
                   onChange={e => updateNutrition("carbs", e.target.value)}
                   className="input-field mt-1"
@@ -888,7 +889,7 @@ const RecipeForm = () => {
                 <Input
                   type="number"
                   min="0"
-                  step="0.1"
+                  step="0.01"
                   value={formData.nutrition.fat ?? ""}
                   onChange={e => updateNutrition("fat", e.target.value)}
                   className="input-field mt-1"
@@ -899,7 +900,7 @@ const RecipeForm = () => {
                 <Input
                   type="number"
                   min="0"
-                  step="0.1"
+                  step="0.01"
                   value={formData.nutrition.fiber ?? ""}
                   onChange={e => updateNutrition("fiber", e.target.value)}
                   className="input-field mt-1"
