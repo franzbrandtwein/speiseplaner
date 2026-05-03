@@ -351,7 +351,12 @@ def _classified_tokens_to_dishes(tokens: list[dict]) -> list[dict]:
                 dishes.append(last)
             last = {"name": token["text"].strip()}
         elif cls == "preis" and last is not None and "price" not in last:
-            price_str = re.sub(r'[€\s]', '', token["text"]).replace(',', '.')
+            # Extrahiere nur die Zahl: entferne Währungszeichen, Buchstaben und Leerzeichen
+            price_str = re.sub(r'[^\d,\.]', '', token["text"]).replace(',', '.')
+            # Mehrere Punkte → nur letzten als Dezimaltrenner behalten (z.B. "1.234.50" → "1234.50")
+            parts = price_str.split('.')
+            if len(parts) > 2:
+                price_str = ''.join(parts[:-1]) + '.' + parts[-1]
             try:
                 last["price"] = float(price_str)
             except ValueError:
