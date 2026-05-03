@@ -1,7 +1,6 @@
-"""Speisekarten-Verwaltung: CRUD, Bild-Upload, LLM-Extraktion von Abholgerichten"""
-import base64
-import json
+"""Speisekarten-Verwaltung: CRUD, Bild-Upload, Texterkennung von Abholgerichten"""
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -173,72 +172,71 @@ async def delete_menu_image(menu_id: str, request: Request, user: User = Depends
     return {"message": "Bild entfernt", "images": images}
 
 
-# ============ LLM-EXTRAKTION ============
+# ============ TEXTERKENNUNG (heuristisch, kein LLM) ============
 
-_MENU_PROMPT = """Du bist ein Speisekarten-Parser. Extrahiere alle Gerichte aus dem folgenden Speisekarten-Text und gib sie als JSON-Array zurück.
-
-Jedes Gericht hat folgende Felder:
-- "name": Gerichtname (Pflicht)
-- "description": Kurzbeschreibung oder Zutaten (optional)
-- "price": Preis als Zahl in Euro (optional, z.B. 12.5)
-
-Antworte NUR mit einem JSON-Array, kein anderer Text. Beispiel:
-[
-  {{"name": "Margherita", "description": "Tomate, Mozzarella", "price": 9.5}},
-  {{"name": "Tiramisu", "description": "Klassisches Dessert", "price": 6.0}}
-]
-
-Speisekarten-Inhalt:
-{content}"""
+# Preis am Zeilenende: optionales €, 1-3 Ziffern, Komma/Punkt, 2 Nachkommastellen
+_PRICE_END_RE = re.compile(
+    r'(?:[\s\t.]{2,}|^)€?\s*(\d{1,3}[,\.]\d{2})\s*€?\s*$'
+)
+_PRICE_ONLY_RE = re.compile(r'^\s*€?\s*\d{1,3}[,\.]\d{2}\s*€?\s*$')
+_SEPARATOR_RE = re.compile(r'^[\-=\*\.\/\|\\─═\s]+$')
+_ALLCAPS_HEADER_RE = re.compile(r'^[A-ZÄÖÜ\d\s\-\/]{4,}$')
 
 
-async def _call_llm_text(content: str) -> list[dict]:
-    import openai
-    llm_key = __import__("os").environ.get("EMERGENT_LLM_KEY", "")
-    if not llm_key:
-        raise HTTPException(503, "LLM-Key nicht konfiguriert (EMERGENT_LLM_KEY)")
+def _parse_menu_text(text: str) -> list[dict]:
+    """
+    Heuristischer Speisekarten-Parser ohne LLM.
+    Erkennt Gerichte durch Zeilen-Splitting, Preisextraktion und
+    Filterung von Kategorieköpfen/Trennzeichen.
+    """
+    dishes: list[dict] = []
+    seen: set[str] = set()
 
-    client = openai.AsyncOpenAI(api_key=llm_key)
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": _MENU_PROMPT.format(content=content[:12000])}],
-        temperature=0.2,
-    )
-    raw = response.choices[0].message.content.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[-1]
-    if raw.endswith("```"):
-        raw = raw[:-3]
-    return json.loads(raw.strip())
+    for raw in text.splitlines():
+        line = raw.strip()
 
+        if not line:
+            continue
+        if _SEPARATOR_RE.fullmatch(line):
+            continue
+        if _PRICE_ONLY_RE.fullmatch(line):
+            continue
+        if len(line) <= 2:
+            continue
+        # Reine Großbuchstaben → Kategorie-Überschrift
+        if _ALLCAPS_HEADER_RE.fullmatch(line) and line == line.upper():
+            continue
+        # "Vorspeisen:" → Kategorie
+        if line.endswith(':') and len(line.split()) <= 4:
+            continue
 
-async def _call_llm_image(image_data: bytes, content_type: str) -> list[dict]:
-    import openai
-    llm_key = __import__("os").environ.get("EMERGENT_LLM_KEY", "")
-    if not llm_key:
-        raise HTTPException(503, "LLM-Key nicht konfiguriert (EMERGENT_LLM_KEY)")
+        # Preis aus dem Zeilenende extrahieren
+        price: Optional[float] = None
+        m = _PRICE_END_RE.search(raw)
+        if m:
+            try:
+                price = float(m.group(1).replace(',', '.'))
+            except ValueError:
+                pass
+            # Preis + Füllzeichen vom Namen entfernen
+            line = re.sub(r'[\s\t.]+€?\s*\d{1,3}[,\.]\d{2}\s*€?\s*$', '', line).strip()
 
-    b64 = base64.b64encode(image_data).decode()
-    data_url = f"data:{content_type};base64,{b64}"
+        line = re.sub(r'[\.\s]+$', '', line).strip()
 
-    client = openai.AsyncOpenAI(api_key=llm_key)
-    response = await client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image_url", "image_url": {"url": data_url}},
-                {"type": "text", "text": _MENU_PROMPT.format(content="(siehe Bild oben)")},
-            ],
-        }],
-        temperature=0.2,
-    )
-    raw = response.choices[0].message.content.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[-1]
-    if raw.endswith("```"):
-        raw = raw[:-3]
-    return json.loads(raw.strip())
+        if len(line) < 3:
+            continue
+
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        dish: dict = {"name": line}
+        if price is not None:
+            dish["price"] = price
+        dishes.append(dish)
+
+    return dishes
 
 
 def _dishes_to_recipes(dishes: list[dict], user: User, source_id: Optional[str]) -> list[dict]:
@@ -293,12 +291,10 @@ async def extract_from_text(menu_id: str, request: Request, user: User = Depends
         raise HTTPException(400, "Text ist zu kurz")
 
     try:
-        dishes = await _call_llm_text(text)
-    except json.JSONDecodeError:
-        raise HTTPException(422, "Gerichte konnten nicht extrahiert werden")
+        dishes = _parse_menu_text(text)
     except Exception as e:
-        logger.error(f"Menu text extraction error: {e}")
-        raise HTTPException(500, f"KI-Fehler: {str(e)[:200]}")
+        logger.error(f"Menu text parse error: {e}")
+        raise HTTPException(500, f"Fehler beim Parsen: {str(e)[:200]}")
 
     return await _save_extracted_dishes(menu, dishes, user)
 
@@ -318,7 +314,7 @@ async def extract_from_image(
     if len(data) > MAX_IMAGE_SIZE:
         raise HTTPException(400, "Bild zu groß (max 10 MB)")
 
-    # Bild auch in der Speisekarte speichern
+    # Bild in Speisekarte speichern
     ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "jpg"
     image_id = uuid.uuid4().hex[:12]
     storage_path = f"{APP_NAME}/menus/{menu_id}/{image_id}.{ext}"
@@ -330,15 +326,7 @@ async def extract_from_image(
     except Exception as e:
         logger.warning(f"Could not save menu image: {e}")
 
-    try:
-        dishes = await _call_llm_image(data, file.content_type)
-    except json.JSONDecodeError:
-        raise HTTPException(422, "Gerichte konnten nicht aus dem Bild extrahiert werden")
-    except Exception as e:
-        logger.error(f"Menu image extraction error: {e}")
-        raise HTTPException(500, f"KI-Fehler: {str(e)[:200]}")
-
-    return await _save_extracted_dishes(menu, dishes, user)
+    raise HTTPException(501, "Automatische Texterkennung aus Bildern ist nicht verfügbar. Bitte Text manuell eingeben.")
 
 
 async def _save_extracted_dishes(menu: dict, dishes: list[dict], user: User) -> dict:

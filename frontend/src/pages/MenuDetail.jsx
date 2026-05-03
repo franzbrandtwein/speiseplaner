@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "../components/ui/dialog";
 import {
-  ArrowLeft, BookOpen, MapPin, Upload, Trash2, Utensils, Sparkles,
+  ArrowLeft, BookOpen, MapPin, Upload, Trash2, Utensils,
   ScanText, Image as ImageIcon, X, Plus, ChevronRight, ShoppingBag,
 } from "lucide-react";
 
@@ -65,10 +65,8 @@ const ImageGallery = ({ images, onUpload, onDelete, uploading }) => {
 
 // ─── Extraktions-Dialog ───────────────────────────────────────────────────────
 const ExtractDialog = ({ open, onClose, menuId, onDone }) => {
-  const [mode, setMode] = useState("text"); // "text" | "image"
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
-  const fileRef = useRef();
 
   const extractText = async () => {
     setLoading(true);
@@ -78,33 +76,12 @@ const ExtractDialog = ({ open, onClose, menuId, onDone }) => {
         { text },
         { withCredentials: true }
       );
-      toast.success(`${data.extracted} Gerichte extrahiert`);
+      toast.success(`${data.extracted} Gerichte erkannt`);
       onDone(data);
       onClose();
       setText("");
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Extraktion fehlgeschlagen");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const extractImage = async (file) => {
-    if (!file) return;
-    setLoading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    try {
-      const { data } = await axios.post(
-        `${API}/menus/${menuId}/extract-image`,
-        fd,
-        { withCredentials: true, headers: { "Content-Type": "multipart/form-data" } }
-      );
-      toast.success(`${data.extracted} Gerichte aus Bild extrahiert`);
-      onDone(data);
-      onClose();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Bild-Extraktion fehlgeschlagen");
+      toast.error(err.response?.data?.detail || "Erkennung fehlgeschlagen");
     } finally {
       setLoading(false);
     }
@@ -115,77 +92,33 @@ const ExtractDialog = ({ open, onClose, menuId, onDone }) => {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="font-heading text-xl flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-amber-500" />
-            Gerichte aus Speisekarte extrahieren
+            <ScanText className="w-5 h-5 text-emerald-500" />
+            Gerichte aus Speisekarte erkennen
           </DialogTitle>
         </DialogHeader>
 
-        {/* Modus-Wahl */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => setMode("text")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
-              mode === "text" ? "border-emerald-400 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-500"
-            }`}
+        <div className="space-y-3">
+          <textarea
+            className="w-full h-48 border border-gray-200 rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-emerald-400"
+            placeholder="Speisekarten-Text hier einfügen…"
+            value={text}
+            onChange={e => setText(e.target.value)}
+          />
+          <Button
+            className="w-full btn-primary"
+            onClick={extractText}
+            disabled={loading || text.trim().length < 10}
           >
-            <ScanText className="w-4 h-4" /> Text eingeben
-          </button>
-          <button
-            onClick={() => setMode("image")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
-              mode === "image" ? "border-emerald-400 bg-emerald-50 text-emerald-700" : "border-gray-200 text-gray-500"
-            }`}
-          >
-            <ImageIcon className="w-4 h-4" /> Bild hochladen
-          </button>
+            {loading
+              ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+              : <ScanText className="w-4 h-4 mr-2" />
+            }
+            Gerichte erkennen
+          </Button>
+          <p className="text-xs text-[var(--text-muted)] text-center">
+            Jede Zeile wird als eigenes Gericht erkannt. Preise werden automatisch ausgelesen.
+          </p>
         </div>
-
-        {mode === "text" ? (
-          <div className="space-y-3">
-            <textarea
-              className="w-full h-48 border border-gray-200 rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-emerald-400"
-              placeholder="Speisekarten-Text hier einfügen…"
-              value={text}
-              onChange={e => setText(e.target.value)}
-            />
-            <Button
-              className="w-full btn-primary"
-              onClick={extractText}
-              disabled={loading || text.trim().length < 10}
-            >
-              {loading
-                ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                : <Sparkles className="w-4 h-4 mr-2" />
-              }
-              Gerichte extrahieren
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div
-              className="border-2 border-dashed border-gray-200 rounded-xl h-40 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={() => fileRef.current?.click()}
-            >
-              {loading
-                ? <div className="w-8 h-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-                : <>
-                    <ImageIcon className="w-10 h-10 text-gray-300 mb-2" />
-                    <span className="text-sm text-[var(--text-muted)]">Bild der Speisekarte auswählen</span>
-                  </>
-              }
-            </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={e => extractImage(e.target.files[0])}
-            />
-            <p className="text-xs text-[var(--text-muted)] text-center">
-              Das Bild wird gespeichert und von KI analysiert
-            </p>
-          </div>
-        )}
       </DialogContent>
     </Dialog>
   );
@@ -327,8 +260,8 @@ export default function MenuDetail() {
             className="btn-primary flex-shrink-0"
             onClick={() => setExtractOpen(true)}
           >
-            <Sparkles className="w-4 h-4 mr-2" />
-            KI-Extraktion
+            <ScanText className="w-4 h-4 mr-2" />
+            Aus Text erkennen
           </Button>
         </div>
 
@@ -362,7 +295,7 @@ export default function MenuDetail() {
                   size="sm"
                   onClick={() => setExtractOpen(true)}
                 >
-                  <Plus className="w-3.5 h-3.5 mr-1.5" /> Via KI hinzufügen
+                  <Plus className="w-3.5 h-3.5 mr-1.5" /> Aus Text hinzufügen
                 </Button>
               </div>
 
@@ -371,14 +304,14 @@ export default function MenuDetail() {
                   <BookOpen className="w-10 h-10 mx-auto text-gray-200 mb-2" />
                   <p className="text-sm text-[var(--text-muted)]">Noch keine Gerichte</p>
                   <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Nutze die KI-Extraktion um Gerichte aus Text oder Bildern zu importieren
+                    Text aus der Speisekarte einfügen – Gerichte werden automatisch erkannt
                   </p>
                   <Button
                     className="btn-primary mt-3"
                     size="sm"
                     onClick={() => setExtractOpen(true)}
                   >
-                    <Sparkles className="w-4 h-4 mr-2" /> Gerichte extrahieren
+                    <ScanText className="w-4 h-4 mr-2" /> Gerichte erkennen
                   </Button>
                 </div>
               ) : (
