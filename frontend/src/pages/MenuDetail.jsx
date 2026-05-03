@@ -11,7 +11,7 @@ import {
 } from "../components/ui/dialog";
 import {
   ArrowLeft, BookOpen, MapPin, Upload, Trash2, Utensils,
-  ScanText, Image as ImageIcon, X, Plus, ChevronRight, ShoppingBag,
+  ScanText, Image as ImageIcon, X, Plus, ChevronRight, ShoppingBag, ChevronLeft,
 } from "lucide-react";
 
 // ─── Bild-Galerie ─────────────────────────────────────────────────────────────
@@ -63,61 +63,156 @@ const ImageGallery = ({ images, onUpload, onDelete, uploading }) => {
   );
 };
 
-// ─── Extraktions-Dialog ───────────────────────────────────────────────────────
-const ExtractDialog = ({ open, onClose, menuId, onDone }) => {
-  const [text, setText] = useState("");
-  const [loading, setLoading] = useState(false);
+// ─── Token-Klassifizierungen ──────────────────────────────────────────────────
+const TOKEN_TYPES = [
+  { key: "gericht", label: "Gericht", bg: "bg-emerald-100 text-emerald-700 border-emerald-300" },
+  { key: "preis",   label: "Preis",   bg: "bg-amber-100  text-amber-700  border-amber-300"   },
+  { key: "skip",    label: "Skip",    bg: "bg-gray-100   text-gray-400   border-gray-200"    },
+];
 
-  const extractText = async () => {
+const TokenRow = ({ token, onChange }) => {
+  const type = TOKEN_TYPES.find(t => t.key === token.class) || TOKEN_TYPES[2];
+  return (
+    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-opacity ${type.bg} ${token.class === "skip" ? "opacity-40" : ""}`}>
+      <span className={`flex-1 truncate ${token.class === "skip" ? "line-through" : "font-medium"}`}>
+        {token.text}
+      </span>
+      <div className="flex gap-1 flex-shrink-0">
+        {TOKEN_TYPES.map(t => (
+          <button
+            key={t.key}
+            onClick={() => onChange(t.key)}
+            className={`px-2 py-0.5 rounded text-xs border transition-all ${
+              token.class === t.key
+                ? t.bg + " font-semibold"
+                : "bg-white text-gray-400 border-gray-200 hover:border-gray-300"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── Extraktions-Wizard ───────────────────────────────────────────────────────
+const ExtractDialog = ({ open, onClose, menuId, onDone }) => {
+  const [step, setStep]     = useState(0); // 0=text, 1=classify
+  const [text, setText]     = useState("");
+  const [tokens, setTokens] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving]   = useState(false);
+
+  const handleClose = () => {
+    setText(""); setTokens([]); setStep(0); onClose();
+  };
+
+  const analyze = async () => {
     setLoading(true);
     try {
       const { data } = await axios.post(
-        `${API}/menus/${menuId}/extract-text`,
+        `${API}/menus/${menuId}/tokenize-text`,
         { text },
         { withCredentials: true }
       );
-      toast.success(`${data.extracted} Gerichte erkannt`);
-      onDone(data);
-      onClose();
-      setText("");
+      setTokens(data.tokens);
+      setStep(1);
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Erkennung fehlgeschlagen");
+      toast.error(err.response?.data?.detail || "Analyse fehlgeschlagen");
     } finally {
       setLoading(false);
     }
   };
 
+  const setTokenClass = (id, cls) =>
+    setTokens(prev => prev.map(t => t.id === id ? { ...t, class: cls } : t));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { data } = await axios.post(
+        `${API}/menus/${menuId}/save-classified`,
+        { tokens },
+        { withCredentials: true }
+      );
+      toast.success(`${data.extracted} Gerichte angelegt`);
+      onDone(data);
+      handleClose();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Fehler beim Speichern");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const gerichtCount = tokens.filter(t => t.class === "gericht").length;
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b">
           <DialogTitle className="font-heading text-xl flex items-center gap-2">
             <ScanText className="w-5 h-5 text-emerald-500" />
-            Gerichte aus Speisekarte erkennen
+            {step === 0 ? "Speisekarte einlesen" : "Textbausteine prüfen"}
           </DialogTitle>
+          {step === 1 && (
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              Klicke auf einen Typ um die Erkennung zu korrigieren.
+            </p>
+          )}
         </DialogHeader>
 
-        <div className="space-y-3">
-          <textarea
-            className="w-full h-48 border border-gray-200 rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-emerald-400"
-            placeholder="Speisekarten-Text hier einfügen…"
-            value={text}
-            onChange={e => setText(e.target.value)}
-          />
-          <Button
-            className="w-full btn-primary"
-            onClick={extractText}
-            disabled={loading || text.trim().length < 10}
-          >
-            {loading
-              ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-              : <ScanText className="w-4 h-4 mr-2" />
-            }
-            Gerichte erkennen
-          </Button>
-          <p className="text-xs text-[var(--text-muted)] text-center">
-            Jede Zeile wird als eigenes Gericht erkannt. Preise werden automatisch ausgelesen.
-          </p>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {step === 0 ? (
+            <textarea
+              className="w-full h-52 border border-gray-200 rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              placeholder={"Speisekarten-Text hier einfügen…\n\nBruschetta ......... 4,50\nSuppe des Tages ..... 5,90\nWiener Schnitzel ... 18,50"}
+              value={text}
+              onChange={e => setText(e.target.value)}
+              autoFocus
+            />
+          ) : (
+            <div className="space-y-1">
+              {tokens.map(token => (
+                <TokenRow key={token.id} token={token} onChange={cls => setTokenClass(token.id, cls)} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t bg-gray-50 flex items-center justify-between gap-3">
+          {step === 0 ? (
+            <Button
+              className="btn-primary w-full"
+              onClick={analyze}
+              disabled={loading || text.trim().length < 5}
+            >
+              {loading
+                ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                : <ScanText className="w-4 h-4 mr-2" />
+              }
+              Analysieren
+            </Button>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setStep(0)}>
+                <ChevronLeft className="w-4 h-4 mr-1" /> Zurück
+              </Button>
+              <span className="text-sm text-[var(--text-muted)]">
+                <span className="font-semibold text-emerald-600">{gerichtCount}</span> Gerichte
+              </span>
+              <Button
+                className="btn-primary"
+                size="sm"
+                onClick={save}
+                disabled={saving || gerichtCount === 0}
+              >
+                {saving && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />}
+                Gerichte anlegen
+              </Button>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

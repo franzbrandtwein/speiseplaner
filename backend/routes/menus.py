@@ -278,8 +278,126 @@ def _dishes_to_recipes(dishes: list[dict], user: User, source_id: Optional[str])
     return result
 
 
-@router.post("/menus/{menu_id}/extract-text")
-async def extract_from_text(menu_id: str, request: Request, user: User = Depends(get_current_user)):
+# ─── Tokenizer ────────────────────────────────────────────────────────────────
+
+# Zahl mit genau 2 Nachkommastellen (Preis-Muster)
+_TOKEN_PRICE_RE = re.compile(r'€?\s*\d{1,3}[,\.]\d{2}\s*€?')
+_TOKEN_SKIP_RE = re.compile(r'^[\-=\*\.\/\|\\─═\s]+$')
+_TOKEN_CAPS_RE = re.compile(r'^[A-ZÄÖÜ\d\s\-\/\.]{4,}$')
+
+
+def _tokenize_menu_text(text: str) -> list[dict]:
+    """
+    Zerlegt Speisekarten-Text in klassifizierte Bausteine.
+    Jede Zeile wird nach Preis-Mustern aufgespalten.
+    Automatische Klasse: 'gericht' | 'preis' | 'skip'
+    """
+    tokens: list[dict] = []
+    token_id = 0
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        # Zeile an Preis-Mustern aufteilen
+        segments: list[tuple[str, bool]] = []  # (text, is_price)
+        last = 0
+        for m in _TOKEN_PRICE_RE.finditer(line):
+            before = line[last:m.start()].strip().strip('.')
+            if before:
+                segments.append((before, False))
+            segments.append((m.group().strip(), True))
+            last = m.end()
+        rest = line[last:].strip().strip('.')
+        if rest:
+            segments.append((rest, False))
+        if not segments:
+            segments = [(line, False)]
+
+        for seg_text, is_price in segments:
+            seg_text = seg_text.strip()
+            if not seg_text:
+                continue
+
+            if is_price:
+                auto_class = "preis"
+            elif _TOKEN_SKIP_RE.fullmatch(seg_text):
+                auto_class = "skip"
+            elif len(seg_text) <= 2:
+                auto_class = "skip"
+            elif _TOKEN_CAPS_RE.fullmatch(seg_text) and seg_text == seg_text.upper():
+                auto_class = "skip"
+            elif seg_text.endswith(':') and len(seg_text.split()) <= 4:
+                auto_class = "skip"
+            else:
+                auto_class = "gericht"
+
+            tokens.append({"id": token_id, "text": seg_text, "class": auto_class})
+            token_id += 1
+
+    return tokens
+
+
+def _classified_tokens_to_dishes(tokens: list[dict]) -> list[dict]:
+    """Ordnet 'preis'-Tokens dem jeweils vorherigen 'gericht'-Token zu."""
+    dishes: list[dict] = []
+    last: Optional[dict] = None
+
+    for token in tokens:
+        cls = token.get("class")
+        if cls == "gericht":
+            if last is not None:
+                dishes.append(last)
+            last = {"name": token["text"].strip()}
+        elif cls == "preis" and last is not None and "price" not in last:
+            price_str = re.sub(r'[€\s]', '', token["text"]).replace(',', '.')
+            try:
+                last["price"] = float(price_str)
+            except ValueError:
+                pass
+
+    if last is not None:
+        dishes.append(last)
+
+    return dishes
+
+
+@router.post("/menus/{menu_id}/tokenize-text")
+async def tokenize_menu_text(menu_id: str, request: Request, user: User = Depends(get_current_user)):
+    """Gibt erkannte Textbausteine mit Auto-Klassifizierung zurück (kein Speichern)."""
+    menu = await db.menus.find_one({"menu_id": menu_id, **_scope_query(user)}, {"_id": 0})
+    if not menu:
+        raise HTTPException(404, "Speisekarte nicht gefunden")
+
+    body = await request.json()
+    text = (body.get("text") or "").strip()
+    if len(text) < 5:
+        raise HTTPException(400, "Text ist zu kurz")
+
+    tokens = _tokenize_menu_text(text)
+    return {"tokens": tokens, "count": len(tokens)}
+
+
+@router.post("/menus/{menu_id}/save-classified")
+async def save_classified_tokens(menu_id: str, request: Request, user: User = Depends(get_current_user)):
+    """Speichert vom Benutzer klassifizierte Textbausteine als Abholgerichte."""
+    menu = await db.menus.find_one({"menu_id": menu_id, **_scope_query(user)}, {"_id": 0})
+    if not menu:
+        raise HTTPException(404, "Speisekarte nicht gefunden")
+
+    body = await request.json()
+    tokens = body.get("tokens") or []
+    if not tokens:
+        raise HTTPException(400, "Keine Tokens übergeben")
+
+    dishes = _classified_tokens_to_dishes(tokens)
+    if not dishes:
+        raise HTTPException(422, "Keine Gerichte in den klassifizierten Tokens gefunden")
+
+    return await _save_extracted_dishes(menu, dishes, user)
+
+
     """Extrahiert Gerichte aus Text und erstellt verknüpfte Abholgerichte."""
     menu = await db.menus.find_one({"menu_id": menu_id, **_scope_query(user)}, {"_id": 0})
     if not menu:
