@@ -860,10 +860,11 @@ def _build_nutrition_prompt(recipe: dict) -> str:
 
 
 def _has_nutrition(recipe: dict) -> bool:
+    """True nur wenn alle vier Kern-Nährwerte vorhanden sind."""
     n = recipe.get("nutrition")
     if not n:
         return False
-    return any(n.get(k) is not None for k in ("calories", "protein", "fat", "carbs"))
+    return all(n.get(k) is not None for k in ("calories", "protein", "fat", "carbs"))
 
 
 @router.post("/recipes/{recipe_id}/estimate-nutrition")

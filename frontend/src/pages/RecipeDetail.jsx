@@ -24,6 +24,12 @@ import {
   AlertDialogTrigger,
 } from "../components/ui/alert-dialog";
 
+const hasCompleteNutrition = (recipe) => {
+  const n = recipe?.nutrition;
+  if (!n) return false;
+  return ["calories", "protein", "fat", "carbs"].every(k => n[k] != null);
+};
+
 const RecipeDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -604,8 +610,8 @@ const RecipeDetail = () => {
               </Card>
             )}
 
-            {/* Nährwerte schätzen (wenn keine vorhanden) */}
-            {!recipe?.nutrition && !nutritionLoading && !nutrition && (
+            {/* Nährwerte schätzen (wenn keine oder unvollständige vorhanden) */}
+            {!nutritionLoading && !nutrition && !hasCompleteNutrition(recipe) && (
               <div className="flex justify-center">
                 <Button
                   variant="outline"
