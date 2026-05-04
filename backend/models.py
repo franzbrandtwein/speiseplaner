@@ -42,6 +42,7 @@ class NutritionInfo(BaseModel):
     sugar: Optional[float] = None       # g
     fiber: Optional[float] = None       # g
     salt: Optional[float] = None        # g
+    estimated: bool = False             # True = KI-Schätzung, kein manueller Wert
 
 
 class Recipe(BaseModel):

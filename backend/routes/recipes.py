@@ -824,3 +824,145 @@ async def add_rating(recipe_id: str, rating_data: RatingCreate, user: User = Dep
     rating_doc['created_at'] = rating_doc['created_at'].isoformat()
     await db.ratings.insert_one(rating_doc)
     return {"message": "Rating added"}
+
+
+# ============ NÄHRWERT-SCHÄTZUNG VIA LLM ============
+
+_NUTRITION_PROMPT_TEMPLATE = """Du bist ein Ernährungsexperte. Schätze die Nährwerte für das folgende Rezept.
+Antworte ausschließlich mit diesem JSON (kein anderer Text):
+{{
+  "calories": kcal_pro_portion_als_zahl,
+  "protein": gramm_protein_pro_portion,
+  "fat": gramm_fett_pro_portion,
+  "saturated_fat": gramm_gesaettigte_fettsaeuren_pro_portion_oder_null,
+  "carbs": gramm_kohlenhydrate_pro_portion,
+  "sugar": gramm_zucker_pro_portion_oder_null,
+  "fiber": gramm_ballaststoffe_pro_portion_oder_null,
+  "salt": gramm_salz_pro_portion_oder_null
+}}
+
+Rezept: {name}
+Portionen: {portions}
+Zutaten:
+{ingredients}"""
+
+
+def _build_nutrition_prompt(recipe: dict) -> str:
+    ingredients_text = "\n".join(
+        f"- {(ing.get('amount') or '')} {(ing.get('unit') or '')} {ing.get('name', '')}".strip()
+        for ing in (recipe.get("ingredients") or [])
+    ) or "Keine Zutaten angegeben"
+    return _NUTRITION_PROMPT_TEMPLATE.format(
+        name=recipe.get("name", "Unbekannt"),
+        portions=recipe.get("portions") or 4,
+        ingredients=ingredients_text,
+    )
+
+
+def _has_nutrition(recipe: dict) -> bool:
+    n = recipe.get("nutrition")
+    if not n:
+        return False
+    return any(n.get(k) is not None for k in ("calories", "protein", "fat", "carbs"))
+
+
+@router.post("/recipes/{recipe_id}/estimate-nutrition")
+async def estimate_nutrition_single(recipe_id: str, user: User = Depends(get_current_user)):
+    """Schätzt Nährwerte für ein einzelnes Rezept via Gemini und speichert sie."""
+    from llm import call_gemini, extract_json, gemini_available
+    if not gemini_available():
+        raise HTTPException(503, "Kein LLM-Dienst verfügbar (GEMINI_API_KEY fehlt)")
+
+    recipe = await db.recipes.find_one({"recipe_id": recipe_id}, {"_id": 0})
+    if not recipe:
+        raise HTTPException(404, "Rezept nicht gefunden")
+
+    prompt = _build_nutrition_prompt(recipe)
+    response = await call_gemini(prompt)
+    if not response:
+        raise HTTPException(502, "Gemini hat nicht geantwortet")
+
+    data = extract_json(response)
+    if not isinstance(data, dict) or data.get("calories") is None:
+        raise HTTPException(422, "Gemini-Antwort enthält keine verwertbaren Nährwerte")
+
+    # Werte runden und als geschätzt markieren
+    nutrition = {
+        "calories": round(float(data["calories"]), 1) if data.get("calories") is not None else None,
+        "protein": round(float(data["protein"]), 1) if data.get("protein") is not None else None,
+        "fat": round(float(data["fat"]), 1) if data.get("fat") is not None else None,
+        "saturated_fat": round(float(data["saturated_fat"]), 1) if data.get("saturated_fat") is not None else None,
+        "carbs": round(float(data["carbs"]), 1) if data.get("carbs") is not None else None,
+        "sugar": round(float(data["sugar"]), 1) if data.get("sugar") is not None else None,
+        "fiber": round(float(data["fiber"]), 1) if data.get("fiber") is not None else None,
+        "salt": round(float(data["salt"]), 1) if data.get("salt") is not None else None,
+        "estimated": True,
+    }
+
+    await db.recipes.update_one(
+        {"recipe_id": recipe_id},
+        {"$set": {"nutrition": nutrition, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"success": True, "nutrition": nutrition}
+
+
+@router.post("/recipes/estimate-nutrition-batch")
+async def estimate_nutrition_batch(user: User = Depends(get_current_user)):
+    """Schätzt Nährwerte für alle Rezepte des Nutzers ohne Nährwerte via Gemini.
+    Verarbeitet die Rezepte sequenziell um Rate-Limits zu respektieren.
+    """
+    from llm import call_gemini, extract_json, gemini_available
+    import asyncio
+    if not gemini_available():
+        raise HTTPException(503, "Kein LLM-Dienst verfügbar (GEMINI_API_KEY fehlt)")
+
+    # Eigene Rezepte ohne Nährwerte laden
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id") if user_doc else None
+    if group_id:
+        query = {"$or": [{"user_id": user.user_id}, {"group_id": group_id}]}
+    else:
+        query = {"user_id": user.user_id}
+
+    all_recipes = await db.recipes.find(query, {"_id": 0}).to_list(1000)
+    candidates = [r for r in all_recipes if not _has_nutrition(r)]
+
+    succeeded, failed = 0, 0
+    for recipe in candidates:
+        try:
+            prompt = _build_nutrition_prompt(recipe)
+            response = await call_gemini(prompt)
+            if not response:
+                failed += 1
+                continue
+            data = extract_json(response)
+            if not isinstance(data, dict) or data.get("calories") is None:
+                failed += 1
+                continue
+            nutrition = {
+                "calories": round(float(data["calories"]), 1) if data.get("calories") is not None else None,
+                "protein": round(float(data["protein"]), 1) if data.get("protein") is not None else None,
+                "fat": round(float(data["fat"]), 1) if data.get("fat") is not None else None,
+                "saturated_fat": round(float(data["saturated_fat"]), 1) if data.get("saturated_fat") is not None else None,
+                "carbs": round(float(data["carbs"]), 1) if data.get("carbs") is not None else None,
+                "sugar": round(float(data["sugar"]), 1) if data.get("sugar") is not None else None,
+                "fiber": round(float(data["fiber"]), 1) if data.get("fiber") is not None else None,
+                "salt": round(float(data["salt"]), 1) if data.get("salt") is not None else None,
+                "estimated": True,
+            }
+            await db.recipes.update_one(
+                {"recipe_id": recipe["recipe_id"]},
+                {"$set": {"nutrition": nutrition, "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            succeeded += 1
+            await asyncio.sleep(0.3)  # kurze Pause für Rate-Limit
+        except Exception as e:
+            logger.warning(f"Nährwert-Schätzung fehlgeschlagen für {recipe.get('name')}: {e}")
+            failed += 1
+
+    return {
+        "total": len(candidates),
+        "succeeded": succeeded,
+        "failed": failed,
+        "skipped": len(all_recipes) - len(candidates),
+    }

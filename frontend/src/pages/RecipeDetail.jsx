@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { 
   ChefHat, Clock, Users, Star, ArrowLeft, Edit, Trash2, 
   AlertTriangle, DollarSign, Flame, UtensilsCrossed, Upload, X, ChevronLeft, ChevronRight,
-  Database, ShoppingBag
+  Database, ShoppingBag, Sparkles
 } from "lucide-react";
 import {
   AlertDialog,
@@ -37,8 +37,9 @@ const RecipeDetail = () => {
   const [galleryIdx, setGalleryIdx] = useState(0);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [nutrition, setNutrition] = useState(null);
-  const [nutritionView, setNutritionView] = useState("portion"); // "portion" | "total"
+  const [nutritionView, setNutritionView] = useState("portion");
   const [nutritionLoading, setNutritionLoading] = useState(false);
+  const [estimatingNutrition, setEstimatingNutrition] = useState(false);
 
   useEffect(() => {
     fetchRecipe();
@@ -48,7 +49,6 @@ const RecipeDetail = () => {
     setNutritionLoading(true);
     try {
       const { data } = await axios.get(`${API}/recipes/${recipeId}/nutrition`, { withCredentials: true });
-      // Nur anzeigen wenn mindestens Kalorien bekannt
       if (data.total?.calories != null) setNutrition(data);
     } catch {
       // Keine Nährwerte → still ignorieren
@@ -56,6 +56,25 @@ const RecipeDetail = () => {
       setNutritionLoading(false);
     }
   }, []);
+
+  const handleEstimateNutrition = async () => {
+    setEstimatingNutrition(true);
+    try {
+      const { data } = await axios.post(
+        `${API}/recipes/${id}/estimate-nutrition`,
+        {},
+        { withCredentials: true }
+      );
+      // Rezept neu laden damit recipe.nutrition aktuell ist
+      const resp = await axios.get(`${API}/recipes/${id}`, { withCredentials: true });
+      setRecipe(resp.data);
+      toast.success("Nährwerte wurden geschätzt");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Schätzung fehlgeschlagen");
+    } finally {
+      setEstimatingNutrition(false);
+    }
+  };
 
   const fetchRecipe = async () => {
     try {
@@ -492,13 +511,18 @@ const RecipeDetail = () => {
               )}
             </Card>
 
-            {/* Nutrition – berechnet aus Stammdaten */}
-            {(nutrition || nutritionLoading) && (
+            {/* Nutrition – berechnet aus Stammdaten oder KI-Schätzung */}
+            {(nutrition || nutritionLoading || recipe?.nutrition?.estimated) && (
               <Card className="p-6 bg-white border-gray-100">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] flex items-center gap-2">
                     <Flame className="w-5 h-5 text-amber-500" />
                     Nährwerte
+                    {recipe?.nutrition?.estimated && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 border border-violet-200">
+                        <Sparkles className="w-3 h-3" /> KI-Schätzung
+                      </span>
+                    )}
                   </h2>
                   {nutrition && (
                     <div className="flex bg-gray-100 rounded-lg p-0.5 text-sm">
@@ -517,6 +541,33 @@ const RecipeDetail = () => {
                     </div>
                   )}
                 </div>
+
+                {/* KI-Schätzung direkt anzeigen wenn keine Stammdaten-Nährwerte */}
+                {recipe?.nutrition?.estimated && !nutrition && (() => {
+                  const n = recipe.nutrition;
+                  const fields = [
+                    { key: "calories", label: "Kalorien", unit: "kcal", color: "bg-orange-50 text-orange-700 border-orange-200" },
+                    { key: "protein", label: "Protein", unit: "g", color: "bg-blue-50 text-blue-700 border-blue-200" },
+                    { key: "fat", label: "Fett", unit: "g", color: "bg-yellow-50 text-yellow-700 border-yellow-200" },
+                    { key: "saturated_fat", label: "ges. Fett", unit: "g", color: "bg-yellow-50 text-yellow-600 border-yellow-100" },
+                    { key: "carbs", label: "Kohlenhydr.", unit: "g", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                    { key: "sugar", label: "Zucker", unit: "g", color: "bg-emerald-50 text-emerald-600 border-emerald-100" },
+                    { key: "fiber", label: "Ballaststoffe", unit: "g", color: "bg-green-50 text-green-700 border-green-200" },
+                    { key: "salt", label: "Salz", unit: "g", color: "bg-gray-50 text-gray-600 border-gray-200" },
+                  ];
+                  return (
+                    <div className="grid grid-cols-4 gap-2">
+                      {fields.map(f => n[f.key] != null ? (
+                        <div key={f.key} className={`rounded-xl border p-3 text-center ${f.color}`}>
+                          <div className="text-lg font-bold">{n[f.key]}</div>
+                          <div className="text-xs opacity-70">{f.unit}</div>
+                          <div className="text-[11px] mt-0.5 leading-tight">{f.label}</div>
+                        </div>
+                      ) : null)}
+                    </div>
+                  );
+                })()}
+
                 {nutritionLoading && <p className="text-sm text-gray-400">Berechne …</p>}
                 {nutrition && (() => {
                   const n = nutritionView === "portion" ? nutrition.per_portion : nutrition.total;
@@ -552,6 +603,26 @@ const RecipeDetail = () => {
                 })()}
               </Card>
             )}
+
+            {/* Nährwerte schätzen (wenn keine vorhanden) */}
+            {!recipe?.nutrition && !nutritionLoading && !nutrition && (
+              <div className="flex justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-violet-600 border-violet-200 hover:bg-violet-50"
+                  onClick={handleEstimateNutrition}
+                  disabled={estimatingNutrition}
+                >
+                  {estimatingNutrition
+                    ? <div className="w-3.5 h-3.5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+                    : <Sparkles className="w-3.5 h-3.5" />
+                  }
+                  Nährwerte via KI schätzen
+                </Button>
+              </div>
+            )}
+
 
             {/* Allergens */}
             {recipe.allergens?.length > 0 && (

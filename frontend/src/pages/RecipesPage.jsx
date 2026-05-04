@@ -14,9 +14,10 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { 
-  ChefHat, Plus, Search, Filter, Star, Clock, Users, X, Download
+  ChefHat, Plus, Search, Filter, Star, Clock, Users, X, Download, Sparkles
 } from "lucide-react";
 import RecipeImportDialog from "../components/RecipeImportDialog";
+import { toast } from "sonner";
 
 const RecipesPage = () => {
   const navigate = useNavigate();
@@ -27,6 +28,7 @@ const RecipesPage = () => {
   const [categoryFilter, setCategoryFilter] = useState("Hauptgericht");
   const [difficultyFilter, setDifficultyFilter] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const [estimatingBatch, setEstimatingBatch] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -48,7 +50,30 @@ const RecipesPage = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleImported = (action) => {
+  const handleEstimateBatch = async () => {
+    setEstimatingBatch(true);
+    try {
+      const { data } = await axios.post(
+        `${API}/recipes/estimate-nutrition-batch`,
+        {},
+        { withCredentials: true }
+      );
+      if (data.succeeded > 0) {
+        toast.success(`${data.succeeded} Rezepte mit Nährwerten ergänzt${data.failed > 0 ? `, ${data.failed} fehlgeschlagen` : ""}`);
+        fetchData();
+      } else if (data.total === 0) {
+        toast.info("Alle Rezepte haben bereits Nährwerte");
+      } else {
+        toast.error("Schätzung fehlgeschlagen");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Fehler bei der Batch-Schätzung");
+    } finally {
+      setEstimatingBatch(false);
+    }
+  };
+
+
     if (action === 'edit') {
       navigate('/recipes/new?from_import=1');
     } else {
@@ -98,6 +123,19 @@ const RecipesPage = () => {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button
+              onClick={handleEstimateBatch}
+              variant="outline"
+              className="border-violet-200 text-violet-700 hover:bg-violet-50"
+              disabled={estimatingBatch}
+              title="Nährwerte für alle Rezepte ohne Angaben via KI schätzen"
+            >
+              {estimatingBatch
+                ? <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin mr-2" />
+                : <Sparkles className="w-4 h-4 mr-2" />
+              }
+              Nährwerte schätzen
+            </Button>
             <Button
               onClick={() => setShowImport(true)}
               variant="outline"
