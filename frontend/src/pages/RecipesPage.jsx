@@ -74,6 +74,7 @@ const RecipesPage = () => {
   };
 
 
+  const handleImported = (action) => {
     if (action === 'edit') {
       navigate('/recipes/new?from_import=1');
     } else {
