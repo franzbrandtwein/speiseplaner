@@ -16,6 +16,7 @@ from routes.groups import router as groups_router
 from routes.notifications import router as notifications_router, notification_scheduler_loop
 from routes.admin import get_router as get_admin_router
 from routes.menus import router as menus_router
+from routes.logs import router as logs_router
 from core import db, get_current_user
 from models import User
 
@@ -51,6 +52,7 @@ app.include_router(ingredients_router)
 app.include_router(groups_router)
 app.include_router(notifications_router)
 app.include_router(menus_router)
+app.include_router(logs_router)
 app.include_router(get_admin_router(db, get_current_user, User))
 
 # Root endpoint

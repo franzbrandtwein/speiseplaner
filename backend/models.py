@@ -92,6 +92,17 @@ class RecipeCreate(BaseModel):
     pickup_source: Optional[str] = None
     pickup_source_id: Optional[str] = None
 
+class AppLog(BaseModel):
+    """Anwendungsprotokoll-Eintrag – wird von verschiedenen App-Teilen geschrieben."""
+    log_id: str = Field(default_factory=lambda: f"log_{uuid.uuid4().hex[:12]}")
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    source: str                             # z.B. "nutrition_estimation", "recipe_import"
+    level: str = "info"                     # "info", "warning", "error"
+    message: str
+    details: dict = Field(default_factory=dict)
+    user_id: Optional[str] = None
+
+
 class Rating(BaseModel):
     model_config = ConfigDict(extra="ignore")
     rating_id: str = Field(default_factory=lambda: f"rating_{uuid.uuid4().hex[:12]}")

@@ -871,6 +871,7 @@ def _has_nutrition(recipe: dict) -> bool:
 async def estimate_nutrition_single(recipe_id: str, user: User = Depends(get_current_user)):
     """Schätzt Nährwerte für ein einzelnes Rezept via Gemini und speichert sie."""
     from llm import call_gemini, extract_json, gemini_available
+    from routes.logs import write_log
     if not gemini_available():
         raise HTTPException(503, "Kein LLM-Dienst verfügbar (GEMINI_API_KEY fehlt)")
 
@@ -878,16 +879,24 @@ async def estimate_nutrition_single(recipe_id: str, user: User = Depends(get_cur
     if not recipe:
         raise HTTPException(404, "Rezept nicht gefunden")
 
+    name = recipe.get("name", recipe_id)
     prompt = _build_nutrition_prompt(recipe)
     response = await call_gemini(prompt)
     if not response:
+        await write_log(source="nutrition_estimation", level="error",
+                        message=f"Keine Gemini-Antwort fuer: {name}",
+                        details={"recipe_id": recipe_id, "recipe_name": name},
+                        user_id=user.user_id)
         raise HTTPException(502, "Gemini hat nicht geantwortet")
 
     data = extract_json(response)
     if not isinstance(data, dict) or data.get("calories") is None:
+        await write_log(source="nutrition_estimation", level="warning",
+                        message=f"Naehrwerte nicht erkannt fuer: {name}",
+                        details={"recipe_id": recipe_id, "recipe_name": name},
+                        user_id=user.user_id)
         raise HTTPException(422, "Gemini-Antwort enthält keine verwertbaren Nährwerte")
 
-    # Werte runden und als geschätzt markieren
     nutrition = {
         "calories": round(float(data["calories"]), 1) if data.get("calories") is not None else None,
         "protein": round(float(data["protein"]), 1) if data.get("protein") is not None else None,
@@ -904,20 +913,24 @@ async def estimate_nutrition_single(recipe_id: str, user: User = Depends(get_cur
         {"recipe_id": recipe_id},
         {"$set": {"nutrition": nutrition, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
+    await write_log(source="nutrition_estimation", level="info",
+                    message=f"Naehrwerte geschaetzt: {name}",
+                    details={"recipe_id": recipe_id, "recipe_name": name,
+                             "calories": nutrition["calories"], "protein": nutrition["protein"],
+                             "fat": nutrition["fat"], "carbs": nutrition["carbs"]},
+                    user_id=user.user_id)
     return {"success": True, "nutrition": nutrition}
 
 
 @router.post("/recipes/estimate-nutrition-batch")
 async def estimate_nutrition_batch(user: User = Depends(get_current_user)):
-    """Schätzt Nährwerte für alle Rezepte des Nutzers ohne Nährwerte via Gemini.
-    Verarbeitet die Rezepte sequenziell um Rate-Limits zu respektieren.
-    """
+    """Schätzt Nährwerte für alle Rezepte des Nutzers ohne vollständige Nährwerte via Gemini."""
     from llm import call_gemini, extract_json, gemini_available
+    from routes.logs import write_log
     import asyncio
     if not gemini_available():
         raise HTTPException(503, "Kein LLM-Dienst verfügbar (GEMINI_API_KEY fehlt)")
 
-    # Eigene Rezepte ohne Nährwerte laden
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     group_id = user_doc.get("group_id") if user_doc else None
     if group_id:
@@ -930,14 +943,23 @@ async def estimate_nutrition_batch(user: User = Depends(get_current_user)):
 
     succeeded, failed = 0, 0
     for recipe in candidates:
+        name = recipe.get("name", recipe["recipe_id"])
         try:
             prompt = _build_nutrition_prompt(recipe)
             response = await call_gemini(prompt)
             if not response:
+                await write_log(source="nutrition_estimation", level="warning",
+                                message=f"Keine Gemini-Antwort fuer: {name}",
+                                details={"recipe_id": recipe["recipe_id"], "recipe_name": name},
+                                user_id=user.user_id)
                 failed += 1
                 continue
             data = extract_json(response)
             if not isinstance(data, dict) or data.get("calories") is None:
+                await write_log(source="nutrition_estimation", level="warning",
+                                message=f"Naehrwerte nicht erkannt fuer: {name}",
+                                details={"recipe_id": recipe["recipe_id"], "recipe_name": name},
+                                user_id=user.user_id)
                 failed += 1
                 continue
             nutrition = {
@@ -955,10 +977,20 @@ async def estimate_nutrition_batch(user: User = Depends(get_current_user)):
                 {"recipe_id": recipe["recipe_id"]},
                 {"$set": {"nutrition": nutrition, "updated_at": datetime.now(timezone.utc).isoformat()}}
             )
+            await write_log(source="nutrition_estimation", level="info",
+                            message=f"Naehrwerte geschaetzt: {name}",
+                            details={"recipe_id": recipe["recipe_id"], "recipe_name": name,
+                                     "calories": nutrition["calories"], "protein": nutrition["protein"],
+                                     "fat": nutrition["fat"], "carbs": nutrition["carbs"]},
+                            user_id=user.user_id)
             succeeded += 1
-            await asyncio.sleep(0.3)  # kurze Pause für Rate-Limit
+            await asyncio.sleep(0.3)
         except Exception as e:
-            logger.warning(f"Nährwert-Schätzung fehlgeschlagen für {recipe.get('name')}: {e}")
+            logger.warning(f"Nährwert-Schätzung fehlgeschlagen für {name}: {e}")
+            await write_log(source="nutrition_estimation", level="error",
+                            message=f"Fehler bei Schaetzung fuer {name}: {e}",
+                            details={"recipe_id": recipe["recipe_id"], "recipe_name": name},
+                            user_id=user.user_id)
             failed += 1
 
     return {

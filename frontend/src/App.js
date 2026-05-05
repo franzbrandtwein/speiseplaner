@@ -25,6 +25,7 @@ import MenuDetail from "./pages/MenuDetail";
 import RecipePrint from "./pages/RecipePrint";
 import NutritionTracking from "./pages/NutritionTracking";
 import AdminDashboard from "./pages/AdminDashboard";
+import LogsPage from "./pages/LogsPage";
 
 // Smart backend URL: adapts to reverse proxy setups
 // When accessed via a different hostname (reverse proxy), use the current origin
@@ -311,6 +312,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <Ingredients />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/logs"
+        element={
+          <ProtectedRoute>
+            <LogsPage />
           </ProtectedRoute>
         }
       />
