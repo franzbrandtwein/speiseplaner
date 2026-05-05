@@ -881,7 +881,14 @@ async def estimate_nutrition_single(recipe_id: str, user: User = Depends(get_cur
 
     name = recipe.get("name", recipe_id)
     prompt = _build_nutrition_prompt(recipe)
-    response = await call_gemini(prompt)
+    try:
+        response = await call_gemini(prompt)
+    except Exception as e:
+        await write_log(source="nutrition_estimation", level="error",
+                        message=f"Gemini-Fehler fuer {name}: {e}",
+                        details={"recipe_id": recipe_id, "recipe_name": name, "error": str(e)},
+                        user_id=user.user_id)
+        raise HTTPException(502, f"Gemini-Fehler: {e}")
     if not response:
         await write_log(source="nutrition_estimation", level="error",
                         message=f"Keine Gemini-Antwort fuer: {name}",

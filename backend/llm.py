@@ -82,20 +82,19 @@ async def call_gemini_with_image(image_bytes: bytes, mime_type: str, prompt: str
 
 
 async def call_gemini(prompt: str) -> Optional[str]:
-    """Ruft Gemini auf und gibt den Antwort-Text zurück (oder None bei Fehler)."""
+    """Ruft Gemini auf und gibt den Antwort-Text zurück.
+    Wirft eine Exception wenn die API antwortet aber fehlschlägt (z.B. 429).
+    Gibt None zurück wenn kein Client konfiguriert ist.
+    """
     client = _get_client()
     if not client:
         return None
-    try:
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: client.models.generate_content(model=GEMINI_MODEL, contents=prompt),
-        )
-        return response.text
-    except Exception as e:
-        logger.error(f"Gemini API Fehler: {e}")
-        return None
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(
+        None,
+        lambda: client.models.generate_content(model=GEMINI_MODEL, contents=prompt),
+    )
+    return response.text
 
 
 def extract_json(text: str) -> Optional[dict | list]:
