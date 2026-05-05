@@ -81,7 +81,7 @@ async def call_gemini_with_image(image_bytes: bytes, mime_type: str, prompt: str
         return None
 
 
-
+async def call_gemini(prompt: str) -> Optional[str]:
     """Ruft Gemini auf und gibt den Antwort-Text zurück (oder None bei Fehler)."""
     client = _get_client()
     if not client:
