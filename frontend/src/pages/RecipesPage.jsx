@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API } from "../App";
@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { 
-  ChefHat, Plus, Search, Filter, Star, Clock, Users, X, Download, Sparkles
+  ChefHat, Plus, Search, Filter, Star, Clock, Users, X, Download, Sparkles, ChevronDown, ChevronUp, CheckCircle, AlertCircle, Loader2
 } from "lucide-react";
 import RecipeImportDialog from "../components/RecipeImportDialog";
 import { toast } from "sonner";
@@ -28,7 +28,12 @@ const RecipesPage = () => {
   const [categoryFilter, setCategoryFilter] = useState("Hauptgericht");
   const [difficultyFilter, setDifficultyFilter] = useState("");
   const [showImport, setShowImport] = useState(false);
-  const [estimatingBatch, setEstimatingBatch] = useState(false);
+  const [showEstimatePanel, setShowEstimatePanel] = useState(false);
+  const [geminiModels, setGeminiModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [estimating, setEstimating] = useState(false);
+  const [estimateProgress, setEstimateProgress] = useState(null); // {index, total, recipe, succeeded, failed, results:[]}
+  const estimateSourceRef = useRef(null);
 
   const fetchData = async () => {
     try {
@@ -50,27 +55,70 @@ const RecipesPage = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleEstimateBatch = async () => {
-    setEstimatingBatch(true);
+  const fetchGeminiModels = async () => {
     try {
-      const { data } = await axios.post(
-        `${API}/recipes/estimate-nutrition-batch`,
-        {},
-        { withCredentials: true }
-      );
-      if (data.succeeded > 0) {
-        toast.success(`${data.succeeded} Rezepte mit Nährwerten ergänzt${data.failed > 0 ? `, ${data.failed} fehlgeschlagen` : ""}`);
-        fetchData();
-      } else if (data.total === 0) {
-        toast.info("Alle Rezepte haben bereits Nährwerte");
-      } else {
-        toast.error("Schätzung fehlgeschlagen");
+      const { data } = await axios.get(`${API}/recipes/gemini-models`, { withCredentials: true });
+      setGeminiModels(data.models || []);
+      if (data.models?.length > 0 && !selectedModel) {
+        setSelectedModel(data.models[0].id);
       }
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Fehler bei der Batch-Schätzung");
-    } finally {
-      setEstimatingBatch(false);
+    } catch {
+      setGeminiModels([]);
     }
+  };
+
+  const handleToggleEstimatePanel = () => {
+    const next = !showEstimatePanel;
+    setShowEstimatePanel(next);
+    if (next && geminiModels.length === 0) fetchGeminiModels();
+  };
+
+  const handleStartEstimation = () => {
+    if (estimateSourceRef.current) estimateSourceRef.current.close();
+    setEstimateProgress({ index: 0, total: 0, recipe: "", succeeded: 0, failed: 0, done: false, results: [] });
+    setEstimating(true);
+
+    const url = `${API}/recipes/estimate-nutrition-stream?model=${encodeURIComponent(selectedModel)}`;
+    const es = new EventSource(url, { withCredentials: true });
+    estimateSourceRef.current = es;
+
+    es.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === "start") {
+        setEstimateProgress(prev => ({ ...prev, total: msg.total }));
+      } else if (msg.type === "progress") {
+        setEstimateProgress(prev => ({ ...prev, index: msg.index, recipe: msg.recipe }));
+      } else if (msg.type === "result") {
+        setEstimateProgress(prev => ({
+          ...prev,
+          succeeded: prev.succeeded + (msg.success ? 1 : 0),
+          failed: prev.failed + (msg.success ? 0 : 1),
+          results: [{ name: msg.recipe, success: msg.success, error: msg.error }, ...prev.results].slice(0, 50),
+        }));
+      } else if (msg.type === "done") {
+        setEstimating(false);
+        setEstimateProgress(prev => ({ ...prev, done: true, total: msg.total, succeeded: msg.succeeded, failed: msg.failed }));
+        es.close();
+        if (msg.succeeded > 0) {
+          fetchData();
+          toast.success(`${msg.succeeded} Rezepte mit Nährwerten ergänzt`);
+        } else if (msg.total === 0) {
+          toast.info("Alle Rezepte haben bereits vollständige Nährwerte");
+        }
+      }
+    };
+    es.onerror = () => {
+      setEstimating(false);
+      setEstimateProgress(prev => prev ? { ...prev, done: true } : prev);
+      es.close();
+      toast.error("Verbindungsfehler beim Schätzen");
+    };
+  };
+
+  const handleCancelEstimation = () => {
+    if (estimateSourceRef.current) estimateSourceRef.current.close();
+    setEstimating(false);
+    setEstimateProgress(prev => prev ? { ...prev, done: true } : prev);
   };
 
 
@@ -125,17 +173,14 @@ const RecipesPage = () => {
           </div>
           <div className="flex gap-2">
             <Button
-              onClick={handleEstimateBatch}
+              onClick={handleToggleEstimatePanel}
               variant="outline"
               className="border-violet-200 text-violet-700 hover:bg-violet-50"
-              disabled={estimatingBatch}
               title="Nährwerte für alle Rezepte ohne Angaben via KI schätzen"
             >
-              {estimatingBatch
-                ? <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin mr-2" />
-                : <Sparkles className="w-4 h-4 mr-2" />
-              }
+              <Sparkles className="w-4 h-4 mr-2" />
               Nährwerte schätzen
+              {showEstimatePanel ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />}
             </Button>
             <Button
               onClick={() => setShowImport(true)}
@@ -153,6 +198,110 @@ const RecipesPage = () => {
             </Link>
           </div>
         </div>
+
+        {/* Nährwert-Schätz-Panel */}
+        {showEstimatePanel && (
+          <Card className="p-5 mb-6 border-violet-200 bg-violet-50">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-violet-800 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  KI-Nährwertschätzung
+                </h2>
+                <button onClick={() => setShowEstimatePanel(false)} className="text-violet-400 hover:text-violet-700">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-violet-700 mb-1">Gemini-Modell</label>
+                  {geminiModels.length > 0 ? (
+                    <Select value={selectedModel} onValueChange={setSelectedModel} disabled={estimating}>
+                      <SelectTrigger className="bg-white border-violet-200">
+                        <SelectValue placeholder="Modell wählen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {geminiModels.map(m => (
+                          <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="text-sm text-violet-500 italic">Lade Modelle…</p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {!estimating && !estimateProgress?.done && (
+                    <Button
+                      onClick={handleStartEstimation}
+                      className="bg-violet-600 hover:bg-violet-700 text-white"
+                      disabled={!selectedModel || estimating}
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Starten
+                    </Button>
+                  )}
+                  {estimating && (
+                    <Button onClick={handleCancelEstimation} variant="outline" className="border-violet-300 text-violet-700">
+                      Abbrechen
+                    </Button>
+                  )}
+                  {estimateProgress?.done && (
+                    <Button onClick={() => { setEstimateProgress(null); }} variant="outline" className="border-violet-300 text-violet-700">
+                      Neue Schätzung
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Fortschritt */}
+              {estimateProgress && (
+                <div className="space-y-3">
+                  {!estimateProgress.done && estimateProgress.total > 0 && (
+                    <div>
+                      <div className="flex justify-between text-sm text-violet-600 mb-1">
+                        <span className="flex items-center gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          {estimateProgress.recipe}
+                        </span>
+                        <span>{estimateProgress.index}/{estimateProgress.total}</span>
+                      </div>
+                      <div className="w-full bg-violet-200 rounded-full h-2">
+                        <div
+                          className="bg-violet-600 h-2 rounded-full transition-all"
+                          style={{ width: `${estimateProgress.total > 0 ? (estimateProgress.index / estimateProgress.total) * 100 : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {estimateProgress.done && (
+                    <p className="text-sm font-medium text-violet-800">
+                      Abgeschlossen: {estimateProgress.succeeded} erfolgreich, {estimateProgress.failed} fehlgeschlagen
+                    </p>
+                  )}
+
+                  {estimateProgress.results.length > 0 && (
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {estimateProgress.results.map((r, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm">
+                          {r.success
+                            ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            : <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                          }
+                          <span className={r.success ? "text-gray-700" : "text-red-600"}>
+                            {r.name}{r.error ? ` – ${r.error}` : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
 
         {/* Filters */}
         <Card className="p-4 mb-6 bg-white border-gray-100">

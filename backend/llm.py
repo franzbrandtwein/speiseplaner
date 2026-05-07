@@ -15,6 +15,12 @@ logger = logging.getLogger("kochplaner.llm")
 
 GEMINI_MODEL = "gemini-flash-latest"
 
+GEMINI_MODELS = [
+    {"id": "gemini-flash-latest", "label": "Gemini Flash (Standard)"},
+    {"id": "gemini-2.0-flash",    "label": "Gemini 2.0 Flash"},
+    {"id": "gemini-1.5-flash",    "label": "Gemini 1.5 Flash"},
+]
+
 _MENU_IMAGE_PROMPT = """Du bist ein Experte für die Digitalisierung von Gastronomie-Daten. 
 Extrahiere die Informationen aus dem angehängten Bild der Speisekarte.
 
@@ -81,7 +87,7 @@ async def call_gemini_with_image(image_bytes: bytes, mime_type: str, prompt: str
         return None
 
 
-async def call_gemini(prompt: str) -> Optional[str]:
+async def call_gemini(prompt: str, model: str = GEMINI_MODEL) -> Optional[str]:
     """Ruft Gemini auf und gibt den Antwort-Text zurück.
     Wirft eine Exception wenn die API antwortet aber fehlschlägt (z.B. 429).
     Gibt None zurück wenn kein Client konfiguriert ist.
@@ -92,7 +98,7 @@ async def call_gemini(prompt: str) -> Optional[str]:
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(
         None,
-        lambda: client.models.generate_content(model=GEMINI_MODEL, contents=prompt),
+        lambda: client.models.generate_content(model=model, contents=prompt),
     )
     return response.text
 
