@@ -37,6 +37,27 @@ async def write_log(
         pass  # Logging darf den Hauptfluss nie blockieren
 
 
+@router.get("/recipes/gemini-usage")
+async def get_gemini_usage(user: User = Depends(get_current_user)):
+    """Zählt Gemini-Aufrufe aus den App-Logs (nur diese App, nicht globale Google-Quota).
+    Gibt Verbrauch pro Modell für heute (seit Mitternacht UTC) zurück.
+    """
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    pipeline = [
+        {"$match": {
+            "source": "nutrition_estimation",
+            "level": "info",
+            "timestamp": {"$gte": today},
+        }},
+        {"$group": {
+            "_id": "$details.model",
+            "count": {"$sum": 1},
+        }},
+    ]
+    rows = await db.app_logs.aggregate(pipeline).to_list(50)
+    return {row["_id"] or "unknown": row["count"] for row in rows}
+
+
 @router.get("/logs")
 async def get_logs(
     source: Optional[str] = Query(None),

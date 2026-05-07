@@ -30,9 +30,10 @@ const RecipesPage = () => {
   const [showImport, setShowImport] = useState(false);
   const [showEstimatePanel, setShowEstimatePanel] = useState(false);
   const [geminiModels, setGeminiModels] = useState([]);
+  const [geminiUsage, setGeminiUsage] = useState({});
   const [selectedModel, setSelectedModel] = useState("");
   const [estimating, setEstimating] = useState(false);
-  const [estimateProgress, setEstimateProgress] = useState(null); // {index, total, recipe, succeeded, failed, results:[]}
+  const [estimateProgress, setEstimateProgress] = useState(null);
   const estimateSourceRef = useRef(null);
 
   const fetchData = async () => {
@@ -57,10 +58,14 @@ const RecipesPage = () => {
 
   const fetchGeminiModels = async () => {
     try {
-      const { data } = await axios.get(`${API}/recipes/gemini-models`, { withCredentials: true });
-      setGeminiModels(data.models || []);
-      if (data.models?.length > 0 && !selectedModel) {
-        setSelectedModel(data.models[0].id);
+      const [modelsRes, usageRes] = await Promise.all([
+        axios.get(`${API}/recipes/gemini-models`, { withCredentials: true }),
+        axios.get(`${API}/recipes/gemini-usage`, { withCredentials: true }),
+      ]);
+      setGeminiModels(modelsRes.data.models || []);
+      setGeminiUsage(usageRes.data || {});
+      if (modelsRes.data.models?.length > 0 && !selectedModel) {
+        setSelectedModel(modelsRes.data.models[0].id);
       }
     } catch {
       setGeminiModels([]);
@@ -99,6 +104,9 @@ const RecipesPage = () => {
         setEstimating(false);
         setEstimateProgress(prev => ({ ...prev, done: true, total: msg.total, succeeded: msg.succeeded, failed: msg.failed }));
         es.close();
+        // Verbrauch aktualisieren
+        axios.get(`${API}/recipes/gemini-usage`, { withCredentials: true })
+          .then(r => setGeminiUsage(r.data || {})).catch(() => {});
         if (msg.succeeded > 0) {
           fetchData();
           toast.success(`${msg.succeeded} Rezepte mit Nährwerten ergänzt`);
@@ -230,10 +238,24 @@ const RecipesPage = () => {
                       </Select>
                       {selectedModel && (() => {
                         const m = geminiModels.find(x => x.id === selectedModel);
+                        const used = geminiUsage[selectedModel] || 0;
                         return m?.limits ? (
-                          <p className="text-xs text-violet-500 mt-1">
-                            Free-Tier: {m.limits.rpm} Req/min · {m.limits.rpd.toLocaleString()} Req/Tag · {(m.limits.tpm / 1000).toLocaleString()}k Token/min
-                          </p>
+                          <div className="mt-1 space-y-1">
+                            <p className="text-xs text-violet-500">
+                              Free-Tier: {m.limits.rpm} Req/min · {m.limits.rpd.toLocaleString()} Req/Tag · {(m.limits.tpm / 1000).toLocaleString()}k Token/min
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 bg-violet-200 rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${used / m.limits.rpd > 0.8 ? "bg-red-500" : used / m.limits.rpd > 0.5 ? "bg-amber-400" : "bg-violet-500"}`}
+                                  style={{ width: `${Math.min((used / m.limits.rpd) * 100, 100)}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-violet-600 whitespace-nowrap">
+                                {used} / {m.limits.rpd.toLocaleString()} heute
+                              </span>
+                            </div>
+                          </div>
                         ) : null;
                       })()}
                     </>
