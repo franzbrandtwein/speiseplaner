@@ -669,6 +669,119 @@ def _parse_ingredient_line(line: str) -> Optional[dict]:
     return None
 
 
+# ============ GEMINI-MODELLE + SSE STREAM (vor {recipe_id}, sonst wird gemini-models als recipe_id gematcht) ============
+
+@router.get("/recipes/gemini-models")
+async def get_gemini_models(user: User = Depends(get_current_user)):
+    """Gibt verfügbare Gemini-Modelle für die Nährwert-Schätzung zurück."""
+    from llm import GEMINI_MODELS
+    return {"models": GEMINI_MODELS}
+
+
+@router.get("/recipes/estimate-nutrition-stream")
+async def estimate_nutrition_stream(
+    model: str = Query(default=None),
+    user: User = Depends(get_current_user),
+):
+    """SSE-Stream für Nährwert-Batch-Schätzung mit Live-Fortschritt."""
+    from llm import call_gemini, extract_json, gemini_available, GEMINI_MODEL
+    from routes.logs import write_log
+    import asyncio
+
+    if not gemini_available():
+        raise HTTPException(503, "Kein LLM-Dienst verfügbar (GEMINI_API_KEY fehlt)")
+
+    used_model = model or GEMINI_MODEL
+
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    group_id = user_doc.get("group_id") if user_doc else None
+    if group_id:
+        query = {"$or": [{"user_id": user.user_id}, {"group_id": group_id}]}
+    else:
+        query = {"user_id": user.user_id}
+
+    all_recipes = await db.recipes.find(query, {"_id": 0}).to_list(1000)
+    candidates = [r for r in all_recipes if not _has_nutrition(r)]
+
+    def sse(data: dict) -> str:
+        return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+    async def generate():
+        yield sse({"type": "start", "total": len(candidates), "model": used_model})
+
+        succeeded, failed = 0, 0
+        for i, recipe in enumerate(candidates):
+            name = recipe.get("name", recipe["recipe_id"])
+            yield sse({"type": "progress", "index": i, "total": len(candidates), "recipe": name})
+
+            try:
+                prompt = _build_nutrition_prompt(recipe)
+                response = await call_gemini(prompt, model=used_model)
+                if not response:
+                    yield sse({"type": "result", "recipe": name, "success": False, "error": "Keine Antwort"})
+                    await write_log(source="nutrition_estimation", level="warning",
+                                    message=f"Keine Gemini-Antwort fuer: {name}",
+                                    details={"recipe_id": recipe["recipe_id"], "recipe_name": name, "model": used_model},
+                                    user_id=user.user_id)
+                    failed += 1
+                    continue
+
+                data = extract_json(response)
+                if not isinstance(data, dict) or data.get("calories") is None:
+                    yield sse({"type": "result", "recipe": name, "success": False, "error": "JSON nicht erkannt"})
+                    await write_log(source="nutrition_estimation", level="warning",
+                                    message=f"Naehrwerte nicht erkannt fuer: {name}",
+                                    details={"recipe_id": recipe["recipe_id"], "recipe_name": name},
+                                    user_id=user.user_id)
+                    failed += 1
+                    continue
+
+                nutrition = {
+                    "calories": round(float(data["calories"]), 1) if data.get("calories") is not None else None,
+                    "protein": round(float(data["protein"]), 1) if data.get("protein") is not None else None,
+                    "fat": round(float(data["fat"]), 1) if data.get("fat") is not None else None,
+                    "saturated_fat": round(float(data["saturated_fat"]), 1) if data.get("saturated_fat") is not None else None,
+                    "carbs": round(float(data["carbs"]), 1) if data.get("carbs") is not None else None,
+                    "sugar": round(float(data["sugar"]), 1) if data.get("sugar") is not None else None,
+                    "fiber": round(float(data["fiber"]), 1) if data.get("fiber") is not None else None,
+                    "salt": round(float(data["salt"]), 1) if data.get("salt") is not None else None,
+                    "estimated": True,
+                }
+                await db.recipes.update_one(
+                    {"recipe_id": recipe["recipe_id"]},
+                    {"$set": {"nutrition": nutrition, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+                await write_log(source="nutrition_estimation", level="info",
+                                message=f"Naehrwerte geschaetzt: {name}",
+                                details={"recipe_id": recipe["recipe_id"], "recipe_name": name,
+                                         "calories": nutrition["calories"], "protein": nutrition["protein"],
+                                         "fat": nutrition["fat"], "carbs": nutrition["carbs"], "model": used_model},
+                                user_id=user.user_id)
+                yield sse({"type": "result", "recipe": name, "success": True,
+                           "calories": nutrition["calories"], "protein": nutrition["protein"],
+                           "fat": nutrition["fat"], "carbs": nutrition["carbs"]})
+                succeeded += 1
+                await asyncio.sleep(0.3)
+
+            except Exception as e:
+                err_str = str(e)
+                yield sse({"type": "result", "recipe": name, "success": False, "error": err_str})
+                await write_log(source="nutrition_estimation", level="error",
+                                message=f"Fehler bei Schaetzung fuer {name}: {err_str}",
+                                details={"recipe_id": recipe["recipe_id"], "recipe_name": name, "model": used_model},
+                                user_id=user.user_id)
+                failed += 1
+
+        yield sse({"type": "done", "total": len(candidates), "succeeded": succeeded, "failed": failed,
+                   "skipped": len(all_recipes) - len(candidates)})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 # ============ SINGLE RECIPE / UPDATE / DELETE ============
 
 @router.get("/recipes/{recipe_id}")
@@ -1008,114 +1121,4 @@ async def estimate_nutrition_batch(user: User = Depends(get_current_user)):
         "skipped": len(all_recipes) - len(candidates),
     }
 
-
-@router.get("/recipes/gemini-models")
-async def get_gemini_models(user: User = Depends(get_current_user)):
-    """Gibt verfügbare Gemini-Modelle für die Nährwert-Schätzung zurück."""
-    from llm import GEMINI_MODELS
-    return {"models": GEMINI_MODELS}
-
-
-@router.get("/recipes/estimate-nutrition-stream")
-async def estimate_nutrition_stream(
-    model: str = Query(default=None),
-    user: User = Depends(get_current_user),
-):
-    """SSE-Stream für Nährwert-Batch-Schätzung mit Live-Fortschritt."""
-    from llm import call_gemini, extract_json, gemini_available, GEMINI_MODEL
-    from routes.logs import write_log
-    import asyncio
-
-    if not gemini_available():
-        raise HTTPException(503, "Kein LLM-Dienst verfügbar (GEMINI_API_KEY fehlt)")
-
-    used_model = model or GEMINI_MODEL
-
-    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
-    group_id = user_doc.get("group_id") if user_doc else None
-    if group_id:
-        query = {"$or": [{"user_id": user.user_id}, {"group_id": group_id}]}
-    else:
-        query = {"user_id": user.user_id}
-
-    all_recipes = await db.recipes.find(query, {"_id": 0}).to_list(1000)
-    candidates = [r for r in all_recipes if not _has_nutrition(r)]
-
-    def sse(data: dict) -> str:
-        return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-    async def generate():
-        yield sse({"type": "start", "total": len(candidates), "model": used_model})
-
-        succeeded, failed = 0, 0
-        for i, recipe in enumerate(candidates):
-            name = recipe.get("name", recipe["recipe_id"])
-            yield sse({"type": "progress", "index": i, "total": len(candidates), "recipe": name})
-
-            try:
-                prompt = _build_nutrition_prompt(recipe)
-                response = await call_gemini(prompt, model=used_model)
-                if not response:
-                    yield sse({"type": "result", "recipe": name, "success": False, "error": "Keine Antwort"})
-                    await write_log(source="nutrition_estimation", level="warning",
-                                    message=f"Keine Gemini-Antwort fuer: {name}",
-                                    details={"recipe_id": recipe["recipe_id"], "recipe_name": name, "model": used_model},
-                                    user_id=user.user_id)
-                    failed += 1
-                    continue
-
-                data = extract_json(response)
-                if not isinstance(data, dict) or data.get("calories") is None:
-                    yield sse({"type": "result", "recipe": name, "success": False, "error": "JSON nicht erkannt"})
-                    await write_log(source="nutrition_estimation", level="warning",
-                                    message=f"Naehrwerte nicht erkannt fuer: {name}",
-                                    details={"recipe_id": recipe["recipe_id"], "recipe_name": name},
-                                    user_id=user.user_id)
-                    failed += 1
-                    continue
-
-                nutrition = {
-                    "calories": round(float(data["calories"]), 1) if data.get("calories") is not None else None,
-                    "protein": round(float(data["protein"]), 1) if data.get("protein") is not None else None,
-                    "fat": round(float(data["fat"]), 1) if data.get("fat") is not None else None,
-                    "saturated_fat": round(float(data["saturated_fat"]), 1) if data.get("saturated_fat") is not None else None,
-                    "carbs": round(float(data["carbs"]), 1) if data.get("carbs") is not None else None,
-                    "sugar": round(float(data["sugar"]), 1) if data.get("sugar") is not None else None,
-                    "fiber": round(float(data["fiber"]), 1) if data.get("fiber") is not None else None,
-                    "salt": round(float(data["salt"]), 1) if data.get("salt") is not None else None,
-                    "estimated": True,
-                }
-                await db.recipes.update_one(
-                    {"recipe_id": recipe["recipe_id"]},
-                    {"$set": {"nutrition": nutrition, "updated_at": datetime.now(timezone.utc).isoformat()}}
-                )
-                await write_log(source="nutrition_estimation", level="info",
-                                message=f"Naehrwerte geschaetzt: {name}",
-                                details={"recipe_id": recipe["recipe_id"], "recipe_name": name,
-                                         "calories": nutrition["calories"], "protein": nutrition["protein"],
-                                         "fat": nutrition["fat"], "carbs": nutrition["carbs"], "model": used_model},
-                                user_id=user.user_id)
-                yield sse({"type": "result", "recipe": name, "success": True,
-                           "calories": nutrition["calories"], "protein": nutrition["protein"],
-                           "fat": nutrition["fat"], "carbs": nutrition["carbs"]})
-                succeeded += 1
-                await asyncio.sleep(0.3)
-
-            except Exception as e:
-                err_str = str(e)
-                yield sse({"type": "result", "recipe": name, "success": False, "error": err_str})
-                await write_log(source="nutrition_estimation", level="error",
-                                message=f"Fehler bei Schaetzung fuer {name}: {err_str}",
-                                details={"recipe_id": recipe["recipe_id"], "recipe_name": name, "model": used_model},
-                                user_id=user.user_id)
-                failed += 1
-
-        yield sse({"type": "done", "total": len(candidates), "succeeded": succeeded, "failed": failed,
-                   "skipped": len(all_recipes) - len(candidates)})
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
