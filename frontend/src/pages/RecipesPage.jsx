@@ -115,9 +115,25 @@ const RecipesPage = () => {
         setEstimating(false);
         setEstimateProgress(prev => ({ ...prev, done: true, total: msg.total, succeeded: msg.succeeded, failed: msg.failed }));
         es.close();
-        // Verbrauch aktualisieren
+        // Verbrauch aktualisieren – Infinity-Werte (Quota-Überschreitungen) behalten
         axios.get(`${API}/recipes/gemini-usage`, { withCredentials: true })
-          .then(r => setGeminiUsage(r.data || {})).catch(() => {});
+          .then(r => {
+            const fresh = r.data || {};
+            setGeminiUsage(prev => {
+              const merged = { ...fresh };
+              // Für jedes Modell: Infinity-Werte (bekannte Quota-Überschreitungen) nicht überschreiben
+              for (const model of Object.keys(prev)) {
+                const p = prev[model] || {};
+                const f = merged[model] || { rpd: 0, rpm: 0 };
+                merged[model] = {
+                  rpd: !isFinite(p.rpd) ? Infinity : Math.max(f.rpd, p.rpd),
+                  rpm: !isFinite(p.rpm) ? Infinity : Math.max(f.rpm, p.rpm),
+                  tpm: !isFinite(p.tpm) ? Infinity : (f.tpm ?? p.tpm),
+                };
+              }
+              return merged;
+            });
+          }).catch(() => {});
         if (msg.succeeded > 0) {
           fetchData();
           toast.success(`${msg.succeeded} Rezepte mit Nährwerten ergänzt`);
