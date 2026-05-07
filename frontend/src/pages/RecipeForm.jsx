@@ -435,9 +435,14 @@ const RecipeForm = () => {
     updateField("instructions", newInstructions);
   };
 
+  const lastInstructionRef = useRef(null);
   const addInstruction = () => {
     updateField("instructions", [...formData.instructions, ""]);
   };
+  useEffect(() => {
+    if (lastInstructionRef.current) lastInstructionRef.current.focus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.instructions.length]);
 
   const removeInstruction = (index) => {
     if (formData.instructions.length > 1) {
@@ -971,6 +976,7 @@ const RecipeForm = () => {
                     {idx + 1}
                   </span>
                   <Textarea
+                    ref={idx === formData.instructions.length - 1 ? lastInstructionRef : null}
                     value={step}
                     onChange={e => updateInstruction(idx, e.target.value)}
                     placeholder={`Schritt ${idx + 1}...`}
