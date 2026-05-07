@@ -16,9 +16,26 @@ logger = logging.getLogger("kochplaner.llm")
 GEMINI_MODEL = "gemini-flash-latest"
 
 GEMINI_MODELS = [
-    {"id": "gemini-flash-latest", "label": "Gemini Flash (Standard)"},
-    {"id": "gemini-2.0-flash",    "label": "Gemini 2.0 Flash"},
-    {"id": "gemini-1.5-flash",    "label": "Gemini 1.5 Flash"},
+    {
+        "id": "gemini-2.0-flash",
+        "label": "Gemini 2.0 Flash",
+        "limits": {"rpm": 15, "rpd": 1500, "tpm": 1_000_000},
+    },
+    {
+        "id": "gemini-2.0-flash-lite",
+        "label": "Gemini 2.0 Flash Lite",
+        "limits": {"rpm": 30, "rpd": 1500, "tpm": 1_000_000},
+    },
+    {
+        "id": "gemini-1.5-flash",
+        "label": "Gemini 1.5 Flash",
+        "limits": {"rpm": 15, "rpd": 1500, "tpm": 1_000_000},
+    },
+    {
+        "id": "gemini-1.5-pro",
+        "label": "Gemini 1.5 Pro",
+        "limits": {"rpm": 2, "rpd": 50, "tpm": 32_000},
+    },
 ]
 
 _MENU_IMAGE_PROMPT = """Du bist ein Experte für die Digitalisierung von Gastronomie-Daten. 

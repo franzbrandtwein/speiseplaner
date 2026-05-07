@@ -217,16 +217,26 @@ const RecipesPage = () => {
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-violet-700 mb-1">Gemini-Modell</label>
                   {geminiModels.length > 0 ? (
-                    <Select value={selectedModel} onValueChange={setSelectedModel} disabled={estimating}>
-                      <SelectTrigger className="bg-white border-violet-200">
-                        <SelectValue placeholder="Modell wählen" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {geminiModels.map(m => (
-                          <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <>
+                      <Select value={selectedModel} onValueChange={setSelectedModel} disabled={estimating}>
+                        <SelectTrigger className="bg-white border-violet-200">
+                          <SelectValue placeholder="Modell wählen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {geminiModels.map(m => (
+                            <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedModel && (() => {
+                        const m = geminiModels.find(x => x.id === selectedModel);
+                        return m?.limits ? (
+                          <p className="text-xs text-violet-500 mt-1">
+                            Free-Tier: {m.limits.rpm} Req/min · {m.limits.rpd.toLocaleString()} Req/Tag · {(m.limits.tpm / 1000).toLocaleString()}k Token/min
+                          </p>
+                        ) : null;
+                      })()}
+                    </>
                   ) : (
                     <p className="text-sm text-violet-500 italic">Lade Modelle…</p>
                   )}
