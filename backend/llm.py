@@ -17,6 +17,21 @@ GEMINI_MODEL = "gemini-2.0-flash"
 
 GEMINI_MODELS = [
     {
+        "id": "gemini-2.5-pro",
+        "label": "Gemini 2.5 Pro",
+        "limits": {"rpm": 5, "rpd": 25, "tpm": 1_000_000},
+    },
+    {
+        "id": "gemini-2.5-flash",
+        "label": "Gemini 2.5 Flash",
+        "limits": {"rpm": 10, "rpd": 500, "tpm": 1_000_000},
+    },
+    {
+        "id": "gemini-2.5-flash-lite",
+        "label": "Gemini 2.5 Flash Lite",
+        "limits": {"rpm": 30, "rpd": 1500, "tpm": 1_000_000},
+    },
+    {
         "id": "gemini-2.0-flash",
         "label": "Gemini 2.0 Flash",
         "limits": {"rpm": 15, "rpd": 1500, "tpm": 1_000_000},
@@ -25,6 +40,11 @@ GEMINI_MODELS = [
         "id": "gemini-2.0-flash-lite",
         "label": "Gemini 2.0 Flash Lite",
         "limits": {"rpm": 30, "rpd": 1500, "tpm": 1_000_000},
+    },
+    {
+        "id": "gemini-flash-latest",
+        "label": "Gemini Flash Latest (Alias)",
+        "limits": {"rpm": 15, "rpd": 1500, "tpm": 1_000_000},
     },
 ]
 
