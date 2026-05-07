@@ -678,6 +678,27 @@ async def get_gemini_models(user: User = Depends(get_current_user)):
     return {"models": GEMINI_MODELS}
 
 
+@router.get("/recipes/gemini-usage")
+async def get_gemini_usage(user: User = Depends(get_current_user)):
+    """Zählt Gemini-Aufrufe aus den App-Logs (nur diese App, nicht globale Google-Quota).
+    Gibt Verbrauch pro Modell für heute (seit Mitternacht UTC) zurück.
+    """
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    pipeline = [
+        {"$match": {
+            "source": "nutrition_estimation",
+            "level": "info",
+            "timestamp": {"$gte": today},
+        }},
+        {"$group": {
+            "_id": "$details.model",
+            "count": {"$sum": 1},
+        }},
+    ]
+    rows = await db.app_logs.aggregate(pipeline).to_list(50)
+    return {row["_id"] or "unknown": row["count"] for row in rows}
+
+
 @router.get("/recipes/estimate-nutrition-stream")
 async def estimate_nutrition_stream(
     model: str = Query(default=None),
