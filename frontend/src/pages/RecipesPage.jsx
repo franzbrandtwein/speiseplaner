@@ -241,15 +241,13 @@ const RecipesPage = () => {
                         const usage = geminiUsage[selectedModel] || { rpd: 0, rpm: 0 };
                         if (!m?.limits) return null;
                         const bars = [
-                          { label: "Req/min", used: usage.rpm, limit: m.limits.rpm },
-                          { label: "Req/Tag", used: usage.rpd, limit: m.limits.rpd },
+                          { label: "Req/min", used: usage.rpm, limit: m.limits.rpm, fmt: v => v.toLocaleString() },
+                          { label: "Req/Tag", used: usage.rpd, limit: m.limits.rpd, fmt: v => v.toLocaleString() },
+                          { label: "Token/min", used: 0, limit: m.limits.tpm, fmt: v => `${(v/1000).toLocaleString()}k`, note: true },
                         ];
                         return (
                           <div className="mt-2 space-y-1.5">
-                            <p className="text-xs text-violet-400">
-                              Free-Tier: {m.limits.rpm} Req/min · {m.limits.rpd.toLocaleString()} Req/Tag · {(m.limits.tpm / 1000).toLocaleString()}k Token/min
-                            </p>
-                            {bars.map(({ label, used, limit }) => {
+                            {bars.map(({ label, used, limit, fmt, note }) => {
                               const pct = Math.min((used / limit) * 100, 100);
                               const color = pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-400" : "bg-violet-500";
                               return (
@@ -258,8 +256,8 @@ const RecipesPage = () => {
                                   <div className="flex-1 bg-violet-200 rounded-full h-1.5">
                                     <div className={`h-1.5 rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
                                   </div>
-                                  <span className="text-xs text-violet-600 whitespace-nowrap w-20 text-right">
-                                    {used} / {limit.toLocaleString()}
+                                  <span className="text-xs text-violet-600 whitespace-nowrap w-24 text-right">
+                                    {note ? "–" : fmt(used)} / {fmt(limit)}
                                   </span>
                                 </div>
                               );
