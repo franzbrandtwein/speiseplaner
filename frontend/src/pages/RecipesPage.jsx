@@ -100,6 +100,17 @@ const RecipesPage = () => {
           failed: prev.failed + (msg.success ? 0 : 1),
           results: [{ name: msg.recipe, success: msg.success, error: msg.error }, ...prev.results].slice(0, 50),
         }));
+        if (msg.quota_exceeded?.length > 0) {
+          // Balken der überschrittenen Quoten auf Maximum setzen
+          setGeminiUsage(prev => {
+            const modelUsage = prev[selectedModel] || { rpd: 0, rpm: 0 };
+            const updated = { ...modelUsage };
+            if (msg.quota_exceeded.includes("rpm")) updated.rpm = Infinity;
+            if (msg.quota_exceeded.includes("rpd")) updated.rpd = Infinity;
+            if (msg.quota_exceeded.includes("tpm")) updated.tpm = Infinity;
+            return { ...prev, [selectedModel]: updated };
+          });
+        }
       } else if (msg.type === "done") {
         setEstimating(false);
         setEstimateProgress(prev => ({ ...prev, done: true, total: msg.total, succeeded: msg.succeeded, failed: msg.failed }));
@@ -243,21 +254,22 @@ const RecipesPage = () => {
                         const bars = [
                           { label: "Req/min", used: usage.rpm, limit: m.limits.rpm, fmt: v => v.toLocaleString() },
                           { label: "Req/Tag", used: usage.rpd, limit: m.limits.rpd, fmt: v => v.toLocaleString() },
-                          { label: "Token/min", used: 0, limit: m.limits.tpm, fmt: v => `${(v/1000).toLocaleString()}k`, note: true },
+                          { label: "Token/min", used: usage.tpm || 0, limit: m.limits.tpm, fmt: v => `${(v/1000).toLocaleString()}k`, note: !(usage.tpm > 0) },
                         ];
                         return (
                           <div className="mt-2 space-y-1.5">
                             {bars.map(({ label, used, limit, fmt, note }) => {
-                              const pct = Math.min((used / limit) * 100, 100);
-                              const color = pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-400" : "bg-violet-500";
+                              const pct = Math.min(isFinite(used) ? (used / limit) * 100 : 100, 100);
+                              const color = pct >= 100 ? "bg-red-500" : pct > 80 ? "bg-red-400" : pct > 50 ? "bg-amber-400" : "bg-violet-500";
+                              const displayUsed = note ? "–" : !isFinite(used) ? "≥"+fmt(limit) : fmt(used);
                               return (
                                 <div key={label} className="flex items-center gap-2">
                                   <span className="text-xs text-violet-500 w-16 shrink-0">{label}</span>
                                   <div className="flex-1 bg-violet-200 rounded-full h-1.5">
                                     <div className={`h-1.5 rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
                                   </div>
-                                  <span className="text-xs text-violet-600 whitespace-nowrap w-24 text-right">
-                                    {note ? "–" : fmt(used)} / {fmt(limit)}
+                                  <span className={`text-xs whitespace-nowrap w-24 text-right ${!isFinite(used) ? "text-red-600 font-medium" : "text-violet-600"}`}>
+                                    {displayUsed} / {fmt(limit)}
                                   </span>
                                 </div>
                               );

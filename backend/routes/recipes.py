@@ -670,6 +670,20 @@ def _parse_ingredient_line(line: str) -> Optional[dict]:
     return None
 
 
+def _parse_quota_violations(error_str: str) -> list[str]:
+    """Extrahiert aus einem Gemini-429-Fehler welche Quoten überschritten wurden.
+    Gibt eine Liste aus 'rpm', 'rpd', 'tpm' zurück.
+    """
+    exceeded = set()
+    if "GenerateRequestsPerMinutePerProjectPerModel" in error_str:
+        exceeded.add("rpm")
+    if "GenerateRequestsPerDayPerProjectPerModel" in error_str:
+        exceeded.add("rpd")
+    if "InputTokensPerModelPerMinute" in error_str or "input_token_count" in error_str:
+        exceeded.add("tpm")
+    return list(exceeded)
+
+
 # ============ GEMINI-MODELLE + SSE STREAM (vor {recipe_id}, sonst wird gemini-models als recipe_id gematcht) ============
 
 @router.get("/recipes/gemini-models")
@@ -797,7 +811,11 @@ async def estimate_nutrition_stream(
 
             except Exception as e:
                 err_str = str(e)
-                yield sse({"type": "result", "recipe": name, "success": False, "error": err_str})
+                quota_exceeded = _parse_quota_violations(err_str)
+                event: dict = {"type": "result", "recipe": name, "success": False, "error": err_str}
+                if quota_exceeded:
+                    event["quota_exceeded"] = quota_exceeded
+                yield sse(event)
                 await write_log(source="nutrition_estimation", level="error",
                                 message=f"Fehler bei Schaetzung fuer {name}: {err_str}",
                                 details={"recipe_id": recipe["recipe_id"], "recipe_name": name, "model": used_model},
