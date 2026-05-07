@@ -477,7 +477,7 @@ const RecipeDetail = () => {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Ingredients / Bezugsquelle */}
-            <Card className="p-6 bg-white border-gray-100 sticky top-6" data-testid="ingredients-section">
+            <Card className="p-6 bg-white border-gray-100 sticky top-6 z-10" data-testid="ingredients-section">
               {recipe.is_pickup ? (
                 <div className="flex flex-col gap-3">
                   <h2 className="font-heading text-xl font-semibold text-[var(--text-primary)] flex items-center gap-2">
