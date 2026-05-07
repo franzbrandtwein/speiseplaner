@@ -238,25 +238,34 @@ const RecipesPage = () => {
                       </Select>
                       {selectedModel && (() => {
                         const m = geminiModels.find(x => x.id === selectedModel);
-                        const used = geminiUsage[selectedModel] || 0;
-                        return m?.limits ? (
-                          <div className="mt-1 space-y-1">
-                            <p className="text-xs text-violet-500">
+                        const usage = geminiUsage[selectedModel] || { rpd: 0, rpm: 0 };
+                        if (!m?.limits) return null;
+                        const bars = [
+                          { label: "Req/min", used: usage.rpm, limit: m.limits.rpm },
+                          { label: "Req/Tag", used: usage.rpd, limit: m.limits.rpd },
+                        ];
+                        return (
+                          <div className="mt-2 space-y-1.5">
+                            <p className="text-xs text-violet-400">
                               Free-Tier: {m.limits.rpm} Req/min · {m.limits.rpd.toLocaleString()} Req/Tag · {(m.limits.tpm / 1000).toLocaleString()}k Token/min
                             </p>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 bg-violet-200 rounded-full h-1.5">
-                                <div
-                                  className={`h-1.5 rounded-full transition-all ${used / m.limits.rpd > 0.8 ? "bg-red-500" : used / m.limits.rpd > 0.5 ? "bg-amber-400" : "bg-violet-500"}`}
-                                  style={{ width: `${Math.min((used / m.limits.rpd) * 100, 100)}%` }}
-                                />
-                              </div>
-                              <span className="text-xs text-violet-600 whitespace-nowrap">
-                                {used} / {m.limits.rpd.toLocaleString()} heute
-                              </span>
-                            </div>
+                            {bars.map(({ label, used, limit }) => {
+                              const pct = Math.min((used / limit) * 100, 100);
+                              const color = pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-400" : "bg-violet-500";
+                              return (
+                                <div key={label} className="flex items-center gap-2">
+                                  <span className="text-xs text-violet-500 w-16 shrink-0">{label}</span>
+                                  <div className="flex-1 bg-violet-200 rounded-full h-1.5">
+                                    <div className={`h-1.5 rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <span className="text-xs text-violet-600 whitespace-nowrap w-20 text-right">
+                                    {used} / {limit.toLocaleString()}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
-                        ) : null;
+                        );
                       })()}
                     </>
                   ) : (

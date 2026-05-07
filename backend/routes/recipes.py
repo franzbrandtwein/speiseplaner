@@ -1,10 +1,11 @@
 """Recipe endpoints: CRUD, ratings, image upload, URL/clipboard import"""
+import asyncio
 import os
 import re
 import json
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import httpx
@@ -680,23 +681,33 @@ async def get_gemini_models(user: User = Depends(get_current_user)):
 
 @router.get("/recipes/gemini-usage")
 async def get_gemini_usage(user: User = Depends(get_current_user)):
-    """Zählt Gemini-Aufrufe aus den App-Logs (nur diese App, nicht globale Google-Quota).
-    Gibt Verbrauch pro Modell für heute (seit Mitternacht UTC) zurück.
+    """Zählt Gemini-Aufrufe aus den App-Logs pro Modell.
+    Gibt rpd (heute seit Mitternacht) und rpm (letzte 60 Sekunden) zurück.
     """
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    pipeline = [
-        {"$match": {
-            "source": "nutrition_estimation",
-            "level": "info",
-            "timestamp": {"$gte": today},
-        }},
-        {"$group": {
-            "_id": "$details.model",
-            "count": {"$sum": 1},
-        }},
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    one_minute_ago = (now.replace(microsecond=0) - timedelta(seconds=60)).isoformat()
+
+    base_match = {"source": "nutrition_estimation", "level": "info"}
+
+    rpd_pipeline = [
+        {"$match": {**base_match, "timestamp": {"$gte": today}}},
+        {"$group": {"_id": "$details.model", "count": {"$sum": 1}}},
     ]
-    rows = await db.app_logs.aggregate(pipeline).to_list(50)
-    return {row["_id"] or "unknown": row["count"] for row in rows}
+    rpm_pipeline = [
+        {"$match": {**base_match, "timestamp": {"$gte": one_minute_ago}}},
+        {"$group": {"_id": "$details.model", "count": {"$sum": 1}}},
+    ]
+
+    rpd_rows, rpm_rows = await asyncio.gather(
+        db.app_logs.aggregate(rpd_pipeline).to_list(50),
+        db.app_logs.aggregate(rpm_pipeline).to_list(50),
+    )
+
+    rpd = {r["_id"] or "unknown": r["count"] for r in rpd_rows}
+    rpm = {r["_id"] or "unknown": r["count"] for r in rpm_rows}
+    all_models = set(rpd) | set(rpm)
+    return {m: {"rpd": rpd.get(m, 0), "rpm": rpm.get(m, 0)} for m in all_models}
 
 
 @router.get("/recipes/estimate-nutrition-stream")
