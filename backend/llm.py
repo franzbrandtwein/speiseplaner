@@ -13,7 +13,7 @@ from typing import Optional
 
 logger = logging.getLogger("kochplaner.llm")
 
-GEMINI_MODEL = "gemini-flash-latest"
+GEMINI_MODEL = "gemini-2.0-flash"
 
 GEMINI_MODELS = [
     {
@@ -25,16 +25,6 @@ GEMINI_MODELS = [
         "id": "gemini-2.0-flash-lite",
         "label": "Gemini 2.0 Flash Lite",
         "limits": {"rpm": 30, "rpd": 1500, "tpm": 1_000_000},
-    },
-    {
-        "id": "gemini-1.5-flash",
-        "label": "Gemini 1.5 Flash",
-        "limits": {"rpm": 15, "rpd": 1500, "tpm": 1_000_000},
-    },
-    {
-        "id": "gemini-1.5-pro",
-        "label": "Gemini 1.5 Pro",
-        "limits": {"rpm": 2, "rpd": 50, "tpm": 32_000},
     },
 ]
 
