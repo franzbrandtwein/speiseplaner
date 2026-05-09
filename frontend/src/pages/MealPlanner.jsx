@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { API } from "../App";
 import Layout from "../components/Layout";
@@ -13,10 +13,10 @@ import {
 import { Input } from "../components/ui/input";
 import { toast } from "sonner";
 import {
-  ChevronLeft, ChevronRight, Plus, X, Save, ShoppingCart,
+  ChevronLeft, ChevronRight, Plus, X, ShoppingCart,
   Coffee, UtensilsCrossed, Moon, ChefHat, ArrowLeft,
   Search, Minus, GripVertical, Users, Copy, BookTemplate, Bookmark, CookingPot, Store,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, CheckCircle2, Loader2
 } from "lucide-react";
 import { format, startOfWeek, addDays, addWeeks, subWeeks } from "date-fns";
 import { de } from "date-fns/locale";
@@ -764,6 +764,9 @@ const MealPlanner = () => {
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null); // null | "saving" | "saved" | "error"
+  const autoSaveTimer = useRef(null);
+  const isInitialLoad = useRef(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [detailSlot, setDetailSlot] = useState(null); // For detail overlay
@@ -795,6 +798,7 @@ const MealPlanner = () => {
   }, [weekStartStr]);
 
   const fetchData = async () => {
+    isInitialLoad.current = true;
     setLoading(true);
     try {
       const [planRes, recipesRes, groupRes] = await Promise.all([
@@ -805,15 +809,39 @@ const MealPlanner = () => {
       setMealPlan(planRes.data);
       setRecipes(recipesRes.data);
       setGroupMembers((groupRes.data.members || []).map(m => m.name));
-      // Nährwerte werden nach Plan-Laden asynchron berechnet
       fetchWeekNutrition(planRes.data);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Daten konnten nicht geladen werden");
     } finally {
       setLoading(false);
+      isInitialLoad.current = false;
     }
   };
+
+  // Auto-Save: bei jeder Änderung an mealPlan nach 800ms speichern
+  useEffect(() => {
+    if (isInitialLoad.current || !mealPlan) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(async () => {
+      setSaveStatus("saving");
+      setSaving(true);
+      try {
+        await axios.post(`${API}/mealplans`, {
+          week_start: weekStartStr,
+          days: mealPlan.days
+        }, { withCredentials: true });
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus(null), 2000);
+      } catch {
+        setSaveStatus("error");
+        toast.error("Automatisches Speichern fehlgeschlagen");
+      } finally {
+        setSaving(false);
+      }
+    }, 800);
+    return () => clearTimeout(autoSaveTimer.current);
+  }, [mealPlan]);
 
   const fetchWeekNutrition = async (plan) => {
     if (!plan?.days) return;
@@ -1100,15 +1128,18 @@ const MealPlanner = () => {
   const saveMealPlan = async () => {
     if (!mealPlan) return;
     setSaving(true);
+    setSaveStatus("saving");
     try {
       await axios.post(`${API}/mealplans`, {
         week_start: weekStartStr,
         days: mealPlan.days
       }, { withCredentials: true });
-      toast.success("Speiseplan gespeichert");
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus(null), 2000);
     } catch (error) {
       console.error("Error saving meal plan:", error);
       toast.error("Fehler beim Speichern");
+      setSaveStatus("error");
     } finally {
       setSaving(false);
     }
@@ -1208,10 +1239,19 @@ const MealPlanner = () => {
                 <ShoppingCart className="w-4 h-4" /> Einkaufsliste
               </Button>
             </Link>
-            <Button onClick={saveMealPlan} disabled={saving} className="btn-primary" data-testid="save-plan-button">
-              <Save className="w-4 h-4" />
-              {saving ? "Speichert..." : "Speichern"}
-            </Button>
+            {saveStatus === "saving" && (
+              <span className="flex items-center gap-1.5 text-sm text-gray-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Speichert…
+              </span>
+            )}
+            {saveStatus === "saved" && (
+              <span className="flex items-center gap-1.5 text-sm text-emerald-600">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Gespeichert
+              </span>
+            )}
+            {saveStatus === "error" && (
+              <span className="text-sm text-red-500">Fehler beim Speichern</span>
+            )}
           </div>
         </div>
 
