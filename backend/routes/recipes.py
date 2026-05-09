@@ -1080,13 +1080,14 @@ def _has_nutrition(recipe: dict) -> bool:
 
 
 @router.post("/recipes/{recipe_id}/estimate-nutrition")
-async def estimate_nutrition_single(recipe_id: str, user: User = Depends(get_current_user)):
+async def estimate_nutrition_single(recipe_id: str, model: Optional[str] = None, user: User = Depends(get_current_user)):
     """Schätzt Nährwerte für ein einzelnes Rezept via Gemini und speichert sie."""
-    from llm import call_gemini, extract_json, gemini_available
+    from llm import call_gemini, extract_json, gemini_available, GEMINI_MODEL
     from routes.logs import write_log
     if not gemini_available():
         raise HTTPException(503, "Kein LLM-Dienst verfügbar (GEMINI_API_KEY fehlt)")
 
+    used_model = model or GEMINI_MODEL
     recipe = await db.recipes.find_one({"recipe_id": recipe_id}, {"_id": 0})
     if not recipe:
         raise HTTPException(404, "Rezept nicht gefunden")
@@ -1094,7 +1095,7 @@ async def estimate_nutrition_single(recipe_id: str, user: User = Depends(get_cur
     name = recipe.get("name", recipe_id)
     prompt = _build_nutrition_prompt(recipe)
     try:
-        response = await call_gemini(prompt)
+        response = await call_gemini(prompt, model=used_model)
     except Exception as e:
         await write_log(source="nutrition_estimation", level="error",
                         message=f"Gemini-Fehler fuer {name}: {e}",
@@ -1136,7 +1137,7 @@ async def estimate_nutrition_single(recipe_id: str, user: User = Depends(get_cur
                     message=f"Naehrwerte geschaetzt: {name}",
                     details={"recipe_id": recipe_id, "recipe_name": name,
                              "calories": nutrition["calories"], "protein": nutrition["protein"],
-                             "fat": nutrition["fat"], "carbs": nutrition["carbs"]},
+                             "fat": nutrition["fat"], "carbs": nutrition["carbs"], "model": used_model},
                     user_id=user.user_id)
     return {"success": True, "nutrition": nutrition}
 

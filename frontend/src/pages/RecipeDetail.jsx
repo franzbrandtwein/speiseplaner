@@ -6,11 +6,12 @@ import Layout from "../components/Layout";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { toast } from "sonner";
 import { 
   ChefHat, Clock, Users, Star, ArrowLeft, Edit, Trash2, 
   AlertTriangle, DollarSign, Flame, UtensilsCrossed, Upload, X, ChevronLeft, ChevronRight,
-  Database, ShoppingBag, Sparkles
+  Database, ShoppingBag, Sparkles, ChevronDown, ChevronUp
 } from "lucide-react";
 import {
   AlertDialog,
@@ -46,10 +47,50 @@ const RecipeDetail = () => {
   const [nutritionView, setNutritionView] = useState("portion");
   const [nutritionLoading, setNutritionLoading] = useState(false);
   const [estimatingNutrition, setEstimatingNutrition] = useState(false);
+  const [showEstimatePanel, setShowEstimatePanel] = useState(false);
+  const [geminiModels, setGeminiModels] = useState([]);
+  const [geminiUsage, setGeminiUsage] = useState({});
+  const [selectedModel, setSelectedModel] = useState("");
 
   useEffect(() => {
     fetchRecipe();
   }, [id]);
+
+  const fetchGeminiModels = useCallback(async () => {
+    try {
+      const [modelsRes, usageRes] = await Promise.all([
+        axios.get(`${API}/recipes/gemini-models`, { withCredentials: true }),
+        axios.get(`${API}/recipes/gemini-usage`, { withCredentials: true }),
+      ]);
+      const models = modelsRes.data.models || [];
+      setGeminiModels(models);
+      setGeminiUsage(usageRes.data || {});
+      if (models.length > 0) setSelectedModel(prev => prev || models[0].id);
+    } catch {
+      setGeminiModels([]);
+    }
+  }, []);
+
+  const handleEstimateNutrition = async () => {
+    setEstimatingNutrition(true);
+    try {
+      await axios.post(
+        `${API}/recipes/${id}/estimate-nutrition?model=${encodeURIComponent(selectedModel)}`,
+        {},
+        { withCredentials: true }
+      );
+      const resp = await axios.get(`${API}/recipes/${id}`, { withCredentials: true });
+      setRecipe(resp.data);
+      axios.get(`${API}/recipes/gemini-usage`, { withCredentials: true })
+        .then(r => setGeminiUsage(r.data || {})).catch(() => {});
+      toast.success("Nährwerte wurden geschätzt");
+      setShowEstimatePanel(false);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Schätzung fehlgeschlagen");
+    } finally {
+      setEstimatingNutrition(false);
+    }
+  };
 
   const fetchNutrition = useCallback(async (recipeId) => {
     setNutritionLoading(true);
@@ -62,25 +103,6 @@ const RecipeDetail = () => {
       setNutritionLoading(false);
     }
   }, []);
-
-  const handleEstimateNutrition = async () => {
-    setEstimatingNutrition(true);
-    try {
-      const { data } = await axios.post(
-        `${API}/recipes/${id}/estimate-nutrition`,
-        {},
-        { withCredentials: true }
-      );
-      // Rezept neu laden damit recipe.nutrition aktuell ist
-      const resp = await axios.get(`${API}/recipes/${id}`, { withCredentials: true });
-      setRecipe(resp.data);
-      toast.success("Nährwerte wurden geschätzt");
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Schätzung fehlgeschlagen");
-    } finally {
-      setEstimatingNutrition(false);
-    }
-  };
 
   const fetchRecipe = async () => {
     try {
@@ -612,20 +634,87 @@ const RecipeDetail = () => {
 
             {/* Nährwerte schätzen (wenn keine oder unvollständige vorhanden) */}
             {!nutritionLoading && !nutrition && !hasCompleteNutrition(recipe) && (
-              <div className="flex justify-center">
+              <div>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="gap-2 text-violet-600 border-violet-200 hover:bg-violet-50"
-                  onClick={handleEstimateNutrition}
-                  disabled={estimatingNutrition}
+                  className="gap-2 text-violet-600 border-violet-200 hover:bg-violet-50 w-full"
+                  onClick={() => {
+                    setShowEstimatePanel(p => {
+                      if (!p) fetchGeminiModels();
+                      return !p;
+                    });
+                  }}
                 >
-                  {estimatingNutrition
-                    ? <div className="w-3.5 h-3.5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
-                    : <Sparkles className="w-3.5 h-3.5" />
-                  }
+                  <Sparkles className="w-3.5 h-3.5" />
                   Nährwerte via KI schätzen
+                  {showEstimatePanel ? <ChevronUp className="w-3.5 h-3.5 ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto" />}
                 </Button>
+
+                {showEstimatePanel && (
+                  <div className="mt-3 p-4 rounded-xl border border-violet-200 bg-violet-50 space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-violet-700 mb-1">Gemini-Modell</label>
+                      {geminiModels.length > 0 ? (
+                        <>
+                          <Select value={selectedModel} onValueChange={setSelectedModel} disabled={estimatingNutrition}>
+                            <SelectTrigger className="bg-white border-violet-200 h-8 text-sm">
+                              <SelectValue placeholder="Modell wählen" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {geminiModels.map(m => (
+                                <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {selectedModel && (() => {
+                            const m = geminiModels.find(x => x.id === selectedModel);
+                            const usage = geminiUsage[selectedModel] || { rpd: 0, rpm: 0 };
+                            if (!m?.limits) return null;
+                            const bars = [
+                              { label: "Req/min", used: usage.rpm, limit: m.limits.rpm, fmt: v => v.toLocaleString() },
+                              { label: "Req/Tag", used: usage.rpd, limit: m.limits.rpd, fmt: v => v.toLocaleString() },
+                              { label: "Token/min", used: usage.tpm || 0, limit: m.limits.tpm, fmt: v => `${(v/1000).toLocaleString()}k`, note: !(usage.tpm > 0) },
+                            ];
+                            return (
+                              <div className="mt-2 space-y-1.5">
+                                {bars.map(({ label, used, limit, fmt, note }) => {
+                                  const pct = Math.min(isFinite(used) ? (used / limit) * 100 : 100, 100);
+                                  const color = pct >= 100 ? "bg-red-500" : pct > 80 ? "bg-red-400" : pct > 50 ? "bg-amber-400" : "bg-violet-500";
+                                  const displayUsed = note ? "–" : !isFinite(used) ? "≥"+fmt(limit) : fmt(used);
+                                  return (
+                                    <div key={label} className="flex items-center gap-2">
+                                      <span className="text-xs text-violet-500 w-14 shrink-0">{label}</span>
+                                      <div className="flex-1 bg-violet-200 rounded-full h-1.5">
+                                        <div className={`h-1.5 rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+                                      </div>
+                                      <span className={`text-xs whitespace-nowrap w-20 text-right ${!isFinite(used) ? "text-red-600 font-medium" : "text-violet-600"}`}>
+                                        {displayUsed} / {fmt(limit)}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
+                        </>
+                      ) : (
+                        <p className="text-xs text-violet-500 italic">Lade Modelle…</p>
+                      )}
+                    </div>
+                    <Button
+                      className="bg-violet-600 hover:bg-violet-700 text-white w-full"
+                      size="sm"
+                      onClick={handleEstimateNutrition}
+                      disabled={estimatingNutrition || !selectedModel}
+                    >
+                      {estimatingNutrition
+                        ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />Schätze…</>
+                        : <><Sparkles className="w-3.5 h-3.5 mr-2" />Schätzen starten</>
+                      }
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
