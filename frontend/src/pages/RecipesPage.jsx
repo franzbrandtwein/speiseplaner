@@ -223,11 +223,11 @@ const RecipesPage = () => {
               {recipes.length} Rezepte in deiner Sammlung
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Button
               onClick={handleToggleEstimatePanel}
               variant="outline"
-              className="border-violet-200 text-violet-700 hover:bg-violet-50"
+              className="border-violet-200 text-violet-700 hover:bg-violet-50 w-full sm:w-auto"
               title="Nährwerte für alle Rezepte ohne Angaben via KI schätzen"
             >
               <Sparkles className="w-4 h-4 mr-2" />
@@ -237,13 +237,13 @@ const RecipesPage = () => {
             <Button
               onClick={() => setShowImport(true)}
               variant="outline"
-              className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+              className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 w-full sm:w-auto"
             >
               <Download className="w-4 h-4 mr-2" />
               Importieren
             </Button>
-            <Link to="/recipes/new">
-              <Button className="btn-primary" data-testid="add-recipe-button">
+            <Link to="/recipes/new" className="w-full sm:w-auto">
+              <Button className="btn-primary w-full" data-testid="add-recipe-button">
                 <Plus className="w-5 h-5" />
                 Neues Rezept
               </Button>
