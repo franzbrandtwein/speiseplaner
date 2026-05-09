@@ -311,9 +311,11 @@ def build_recipe_from_jsonld(jsonld: dict) -> dict:
     difficulty_raw = jsonld.get('difficulty') or jsonld.get('recipeDifficulty')
     difficulty = map_difficulty(difficulty_raw)
 
+    raw_name = (jsonld.get('name') or 'Importiertes Rezept').strip()
+    raw_desc = (jsonld.get('description') or '').strip()
     return {
-        "name": (jsonld.get('name') or 'Importiertes Rezept').strip(),
-        "description": (jsonld.get('description') or '').strip() or None,
+        "name": _clean_recipe_name(raw_name),
+        "description": _clean_recipe_description(raw_desc) if raw_desc else None,
         "ingredients": ingredients,
         "instructions": instructions,
         "portions": portions,
@@ -329,8 +331,8 @@ def build_recipe_from_jsonld(jsonld: dict) -> dict:
 
 
 _RECIPE_JSON_SCHEMA = """{
-  "name": "string",
-  "description": "string oder null",
+  "name": "string (nur der Rezeptname, KEIN 'von Autor' oder Benutzernamen)",
+  "description": "string oder null (NUR die kulinarische Kurzbeschreibung des Gerichts – keine Bewertungen, Portionsrechner, Werbetexte, Metadaten oder Autorhinweise)",
   "ingredients": [{"name": "string", "amount": "string", "unit": "string"}],
   "instructions": ["string"],
   "portions": number,
@@ -342,7 +344,31 @@ _RECIPE_JSON_SCHEMA = """{
 }"""
 
 
-def _clean_html(html: str, max_chars: int = 8000) -> str:
+def _clean_recipe_name(name: str) -> str:
+    """Entfernt Autorenzusätze wie 'von Max Mustermann' am Ende des Namens."""
+    name = name.strip()
+    # Nur entfernen wenn danach ein "Nutzername"-artiger Token steht (kein normales Wort)
+    cleaned = re.sub(r'\s+von\s+\w{5,}.*$', '', name, flags=re.IGNORECASE).strip()
+    return cleaned if cleaned else name
+
+
+def _clean_recipe_description(desc: str) -> str:
+    """Kürzt die Beschreibung auf den ersten sinnvollen Satz/Absatz (max 500 Zeichen)."""
+    desc = desc.strip()
+    # Ersten Absatz nehmen
+    first_para = re.split(r'\n{2,}', desc)[0].strip()
+    # Auf 500 Zeichen begrenzen, am Satzende kürzen
+    if len(first_para) > 500:
+        cut = first_para[:500]
+        last_sentence = max(cut.rfind('. '), cut.rfind('! '), cut.rfind('? '))
+        if last_sentence > 100:
+            first_para = cut[:last_sentence + 1]
+        else:
+            first_para = cut.rstrip() + '…'
+    return first_para
+
+
+
     """Entfernt irrelevante HTML-Blöcke und gibt bereinigten Text zurück."""
     for tag in ("script", "style", "nav", "header", "footer"):
         html = re.sub(rf'<{tag}[^>]*>.*?</{tag}>', ' ', html, flags=re.DOTALL | re.IGNORECASE)
