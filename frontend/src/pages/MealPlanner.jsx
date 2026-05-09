@@ -770,6 +770,7 @@ const MealPlanner = () => {
   const [dragSource, setDragSource] = useState(null);
   const [dragOverTarget, setDragOverTarget] = useState(null);
   const [moveSource, setMoveSource] = useState(null); // Mobile tap-to-move
+  const [moveSourcePlan, setMoveSourcePlan] = useState(null); // { weekStart, days } für Cross-Week-Move
   const [groupMembers, setGroupMembers] = useState([]); // For assigned_to
   const [templates, setTemplates] = useState([]);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false); // "save" | "apply" | false
@@ -785,6 +786,11 @@ const MealPlanner = () => {
   }));
 
   useEffect(() => {
+    // Wenn beim Wochenwechsel eine Verschiebung aktiv ist, Quelldaten der alten Woche merken
+    if (moveSource && mealPlan) {
+      const srcWeekStart = format(startOfWeek(new Date(moveSource.dateStr), { weekStartsOn: 1 }), "yyyy-MM-dd");
+      setMoveSourcePlan({ weekStart: srcWeekStart, days: mealPlan.days });
+    }
     fetchData();
   }, [weekStartStr]);
 
@@ -948,8 +954,62 @@ const MealPlanner = () => {
   };
 
   // ── Shared move/swap logic ──
-  const performMoveOrSwap = (srcDate, srcMeal, targetDate, targetMeal) => {
+  const performMoveOrSwap = async (srcDate, srcMeal, targetDate, targetMeal) => {
     if (srcDate === targetDate && srcMeal === targetMeal) return;
+
+    const srcWeekStart = format(startOfWeek(new Date(srcDate), { weekStartsOn: 1 }), "yyyy-MM-dd");
+    const isCrossWeek = srcWeekStart !== weekStartStr;
+
+    if (isCrossWeek) {
+      // Cross-Week: Quelldaten aus moveSourcePlan, Zieldaten aus aktuellem mealPlan
+      const sourcePlanDays = moveSourcePlan?.days;
+      if (!sourcePlanDays) {
+        toast.error("Quelldaten nicht mehr verfügbar – bitte erneut versuchen");
+        setMoveSourcePlan(null);
+        return;
+      }
+      const srcSlot = (() => {
+        const day = sourcePlanDays.find(d => d.date === srcDate);
+        const slot = day?.[srcMeal];
+        if (!slot) return [];
+        if (Array.isArray(slot)) return slot;
+        return slot.recipe_id ? [slot] : [];
+      })();
+      const targetSlot = getMealsForSlot(targetDate, targetMeal);
+
+      // Quellwoche: Slot leeren
+      const newSourceDays = sourcePlanDays.map(d =>
+        d.date === srcDate ? { ...d, [srcMeal]: targetSlot } : d
+      );
+      // Zielwoche: neue Days berechnen
+      const newTargetDays = mealPlan?.days?.map(d =>
+        d.date === targetDate ? { ...d, [targetMeal]: srcSlot } : d
+      ) ?? [];
+
+      // Lokalen State aktualisieren
+      setMealPlan(prev => ({
+        ...prev,
+        days: newTargetDays
+      }));
+
+      // Beide Wochen speichern
+      setSaving(true);
+      try {
+        await Promise.all([
+          axios.post(`${API}/mealplans`, { week_start: srcWeekStart, days: newSourceDays }, { withCredentials: true }),
+          axios.post(`${API}/mealplans`, { week_start: weekStartStr, days: newTargetDays }, { withCredentials: true }),
+        ]);
+        toast.success(targetSlot.length > 0 ? "Gerichte getauscht (Wochen)" : "Gericht in andere Woche verschoben");
+      } catch {
+        toast.error("Fehler beim Speichern des Wochenwechsels");
+      } finally {
+        setSaving(false);
+      }
+      setMoveSourcePlan(null);
+      return;
+    }
+
+    // Same-Week-Move (bisherige Logik)
     const srcSlot = getMealsForSlot(srcDate, srcMeal);
     const targetSlot = getMealsForSlot(targetDate, targetMeal);
     setMealPlan(prev => ({
@@ -996,30 +1056,33 @@ const MealPlanner = () => {
     setDragOverTarget(null);
   };
 
-  const handleDrop = (e, targetDateStr, targetMealType) => {
+  const handleDrop = async (e, targetDateStr, targetMealType) => {
     e.preventDefault();
     setDragOverTarget(null);
     if (!dragSource || !mealPlan) return;
     const { dateStr: srcDate, mealType: srcMeal } = dragSource;
     setDragSource(null);
-    performMoveOrSwap(srcDate, srcMeal, targetDateStr, targetMealType);
+    await performMoveOrSwap(srcDate, srcMeal, targetDateStr, targetMealType);
   };
 
   // ── Mobile Tap-to-Move ──
   const handleMoveStart = (dateStr, mealType) => {
     if (moveSource && moveSource.dateStr === dateStr && moveSource.mealType === mealType) {
       setMoveSource(null); // tap same slot = cancel
+      setMoveSourcePlan(null);
     } else {
       setMoveSource({ dateStr, mealType });
+      setMoveSourcePlan(null); // Neues Move – alten Snapshot verwerfen
     }
   };
 
-  const handleSlotClick = (dateStr, mealType) => {
+  const handleSlotClick = async (dateStr, mealType) => {
     if (moveSource) {
       if (moveSource.dateStr === dateStr && moveSource.mealType === mealType) {
-        setMoveSource(null); // cancel
+        setMoveSource(null);
+        setMoveSourcePlan(null); // cancel
       } else {
-        performMoveOrSwap(moveSource.dateStr, moveSource.mealType, dateStr, mealType);
+        await performMoveOrSwap(moveSource.dateStr, moveSource.mealType, dateStr, mealType);
         setMoveSource(null);
       }
     } else {
