@@ -171,19 +171,55 @@ def parse_ingredient_string(raw: str) -> dict:
 
 def map_category(keywords) -> str:
     kw_lower = ' '.join([k.lower() for k in (keywords or [])])
-    if any(x in kw_lower for x in ['frühstück', 'breakfast', 'müsli', 'porridge', 'brunch']):
+    # Wortgrenzen-Hilfsfunktion für exakte Matches
+    import re as _re
+    def _word_match(term, text):
+        return bool(_re.search(r'\b' + _re.escape(term) + r'\b', text))
+
+    # Direkte Kategorie-Zuordnung (hohe Priorität)
+    direct_map = {
+        'hauptspeise': 'Hauptgericht',
+        'hauptgericht': 'Hauptgericht',
+        'dessert': 'Dessert',
+        'nachspeise': 'Dessert',
+        'süßspeise': 'Dessert',
+        'kuchen': 'Dessert',
+        'torten': 'Dessert',
+        'gebäck': 'Dessert',
+        'backen': 'Dessert',
+        'frühstück': 'Frühstück',
+        'breakfast': 'Frühstück',
+        'brunch': 'Frühstück',
+        'suppe': 'Suppe',
+        'eintopf': 'Suppe',
+        'salat': 'Salat',
+        'vorspeise': 'Vorspeise',
+        'starter': 'Vorspeise',
+        'snack': 'Snack',
+        'fingerfood': 'Snack',
+        'getränk': 'Getränk',
+        'smoothie': 'Getränk',
+        'cocktail': 'Getränk',
+    }
+    for term, cat in direct_map.items():
+        if _word_match(term, kw_lower):
+            return cat
+
+    # Keyword-Matching als Fallback (vorsichtiger)
+    if any(_word_match(x, kw_lower) for x in ['müsli', 'porridge', 'pancake']):
         return 'Frühstück'
-    if any(x in kw_lower for x in ['suppe', 'soup', 'eintopf', 'brühe']):
+    if any(_word_match(x, kw_lower) for x in ['soup', 'brühe']):
         return 'Suppe'
-    if any(x in kw_lower for x in ['salat', 'salad']):
+    if any(_word_match(x, kw_lower) for x in ['salad']):
         return 'Salat'
-    if any(x in kw_lower for x in ['dessert', 'kuchen', 'torte', 'süß', 'eis', 'gebäck', 'muffin', 'keks', 'backrezept']):
+    # Dessert: nur bei eindeutigen Begriffen (kein "süß" allein – zu unspezifisch)
+    if any(_word_match(x, kw_lower) for x in ['torte', 'muffin', 'keks', 'backrezept', 'brownie', 'praline']):
         return 'Dessert'
-    if any(x in kw_lower for x in ['snack', 'fingerfood', 'dip', 'aufstrich']):
+    if any(_word_match(x, kw_lower) for x in ['dip', 'aufstrich']):
         return 'Snack'
-    if any(x in kw_lower for x in ['vorspeise', 'starter', 'appetizer']):
+    if any(_word_match(x, kw_lower) for x in ['appetizer', 'amuse']):
         return 'Vorspeise'
-    if any(x in kw_lower for x in ['getränk', 'drink', 'smoothie', 'saft', 'cocktail']):
+    if any(_word_match(x, kw_lower) for x in ['drink', 'saft']):
         return 'Getränk'
     return 'Hauptgericht'
 
@@ -305,8 +341,14 @@ def build_recipe_from_jsonld(jsonld: dict) -> dict:
         keywords = kw
     cat_raw = jsonld.get('recipeCategory', '')
     if isinstance(cat_raw, list):
-        cat_raw = cat_raw[0] if cat_raw else ''
-    category = map_category(keywords + ([str(cat_raw)] if cat_raw else []))
+        # Alle Einträge als separate Keywords übergeben
+        cat_tokens = [str(c).strip() for c in cat_raw if c]
+    elif cat_raw:
+        # Kommagetrennte Strings aufteilen (Chefkoch: "Hauptspeise, Fleischgerichte")
+        cat_tokens = [c.strip() for c in str(cat_raw).split(',') if c.strip()]
+    else:
+        cat_tokens = []
+    category = map_category(keywords + cat_tokens)
 
     difficulty_raw = jsonld.get('difficulty') or jsonld.get('recipeDifficulty')
     difficulty = map_difficulty(difficulty_raw)
