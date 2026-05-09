@@ -244,7 +244,7 @@ const RecipeForm = () => {
   const isEditing = Boolean(id);
   const fromImport = searchParams.get('from_import') === '1';
   
-  const [loading, setLoading] = useState(isEditing);
+  const [loading, setLoading] = useState(isEditing || fromImport);
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState({ categories: [], difficulties: [], allergens: [] });
   const [hasGroup, setHasGroup] = useState(false);
@@ -324,30 +324,30 @@ const RecipeForm = () => {
             pickup_source: recipe.pickup_source || "",
             pickup_source_id: recipe.pickup_source_id || null
           });
-          // Load imported recipe draft from sessionStorage
+        } else if (fromImport) {
           const draft = sessionStorage.getItem('import_recipe_draft');
           if (draft) {
             try {
-              const recipe = JSON.parse(draft);
+              const imported = JSON.parse(draft);
               setFormData({
-                name: recipe.name || "",
-                description: recipe.description || "",
-                category: recipe.category || "Hauptgericht",
-                difficulty: recipe.difficulty || "mittel",
-                portions: recipe.portions || 4,
-                prep_time: recipe.prep_time || "",
-                cook_time: recipe.cook_time || "",
-                image_url: recipe.image_url || "",
-                cost_per_portion: recipe.cost_per_portion || "",
-                ingredients: recipe.ingredients?.length ? recipe.ingredients : [{ name: "", amount: "", unit: "g" }],
-                instructions: recipe.instructions?.length ? recipe.instructions : [""],
-                nutrition: recipe.nutrition || { calories: "", protein: "", carbs: "", fat: "", fiber: "" },
-                allergens: recipe.allergens || [],
-                side_dishes: recipe.side_dishes || [],
-                shared_with_group: recipe.shared_with_group || false,
-                is_pickup: recipe.is_pickup || false,
-                pickup_source: recipe.pickup_source || "",
-                pickup_source_id: recipe.pickup_source_id || null
+                name: imported.name || "",
+                description: imported.description || "",
+                category: imported.category || "Hauptgericht",
+                difficulty: imported.difficulty || "mittel",
+                portions: imported.portions || 4,
+                prep_time: imported.prep_time || "",
+                cook_time: imported.cook_time || "",
+                image_url: imported.image_url || "",
+                cost_per_portion: imported.cost_per_portion || "",
+                ingredients: imported.ingredients?.length ? imported.ingredients : [{ name: "", amount: "", unit: "g" }],
+                instructions: imported.instructions?.length ? imported.instructions : [""],
+                nutrition: imported.nutrition || { calories: "", protein: "", carbs: "", fat: "", fiber: "" },
+                allergens: imported.allergens || [],
+                side_dishes: imported.side_dishes || [],
+                shared_with_group: imported.shared_with_group || false,
+                is_pickup: imported.is_pickup || false,
+                pickup_source: imported.pickup_source || "",
+                pickup_source_id: imported.pickup_source_id || null
               });
               sessionStorage.removeItem('import_recipe_draft');
               toast.success("Importiertes Rezept geladen – bitte prüfen und speichern.");
@@ -364,7 +364,7 @@ const RecipeForm = () => {
       }
     };
     fetchData();
-  }, [id, isEditing]);
+  }, [id, isEditing, fromImport]);
 
   const updateField = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
