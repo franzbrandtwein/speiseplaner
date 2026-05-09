@@ -92,7 +92,24 @@ const RecipesPage = () => {
       if (msg.type === "start") {
         setEstimateProgress(prev => ({ ...prev, total: msg.total }));
       } else if (msg.type === "progress") {
-        setEstimateProgress(prev => ({ ...prev, index: msg.index, recipe: msg.recipe }));
+        setEstimateProgress(prev => ({ ...prev, index: msg.index, recipe: msg.recipe, retrying: false }));
+      } else if (msg.type === "retry") {
+        setEstimateProgress(prev => ({
+          ...prev,
+          recipe: msg.recipe,
+          retrying: true,
+          retryWait: msg.wait,
+        }));
+        if (msg.quota_exceeded?.length > 0) {
+          setGeminiUsage(prev => {
+            const modelUsage = prev[selectedModel] || { rpd: 0, rpm: 0 };
+            const updated = { ...modelUsage };
+            if (msg.quota_exceeded.includes("rpm")) updated.rpm = Infinity;
+            if (msg.quota_exceeded.includes("rpd")) updated.rpd = Infinity;
+            if (msg.quota_exceeded.includes("tpm")) updated.tpm = Infinity;
+            return { ...prev, [selectedModel]: updated };
+          });
+        }
       } else if (msg.type === "result") {
         setEstimateProgress(prev => ({
           ...prev,
@@ -330,7 +347,9 @@ const RecipesPage = () => {
                       <div className="flex justify-between text-sm text-violet-600 mb-1">
                         <span className="flex items-center gap-1">
                           <Loader2 className="w-3 h-3 animate-spin" />
-                          {estimateProgress.recipe}
+                          {estimateProgress.retrying
+                            ? `⏳ Warte ${estimateProgress.retryWait}s (Rate-Limit)…`
+                            : estimateProgress.recipe}
                         </span>
                         <span>{estimateProgress.index}/{estimateProgress.total}</span>
                       </div>

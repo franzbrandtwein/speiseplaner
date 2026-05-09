@@ -765,6 +765,12 @@ async def estimate_nutrition_stream(
 
     used_model = model or GEMINI_MODEL
 
+    # Delay zwischen Requests basierend auf Modell-RPM (mit 20% Puffer)
+    from llm import GEMINI_MODELS
+    model_info = next((m for m in GEMINI_MODELS if m["id"] == used_model), None)
+    rpm = model_info["limits"]["rpm"] if model_info else 15
+    request_delay = max(2.0, (60.0 / rpm) * 1.2)  # z.B. 15 RPM → 5s Abstand
+
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     group_id = user_doc.get("group_id") if user_doc else None
     if group_id:
@@ -779,74 +785,90 @@ async def estimate_nutrition_stream(
         return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
     async def generate():
-        yield sse({"type": "start", "total": len(candidates), "model": used_model})
+        yield sse({"type": "start", "total": len(candidates), "model": used_model,
+                   "request_delay": request_delay})
 
         succeeded, failed = 0, 0
         for i, recipe in enumerate(candidates):
             name = recipe.get("name", recipe["recipe_id"])
             yield sse({"type": "progress", "index": i, "total": len(candidates), "recipe": name})
 
-            try:
-                prompt = _build_nutrition_prompt(recipe)
-                response = await call_gemini(prompt, model=used_model)
-                if not response:
-                    yield sse({"type": "result", "recipe": name, "success": False, "error": "Keine Antwort"})
-                    await write_log(source="nutrition_estimation", level="warning",
-                                    message=f"Keine Gemini-Antwort fuer: {name}",
+            for attempt in range(2):  # max 1 Retry
+                try:
+                    prompt = _build_nutrition_prompt(recipe)
+                    response = await call_gemini(prompt, model=used_model)
+                    if not response:
+                        yield sse({"type": "result", "recipe": name, "success": False, "error": "Keine Antwort"})
+                        await write_log(source="nutrition_estimation", level="warning",
+                                        message=f"Keine Gemini-Antwort fuer: {name}",
+                                        details={"recipe_id": recipe["recipe_id"], "recipe_name": name, "model": used_model},
+                                        user_id=user.user_id)
+                        failed += 1
+                        break
+
+                    data = extract_json(response)
+                    if not isinstance(data, dict) or data.get("calories") is None:
+                        yield sse({"type": "result", "recipe": name, "success": False, "error": "JSON nicht erkannt"})
+                        await write_log(source="nutrition_estimation", level="warning",
+                                        message=f"Naehrwerte nicht erkannt fuer: {name}",
+                                        details={"recipe_id": recipe["recipe_id"], "recipe_name": name},
+                                        user_id=user.user_id)
+                        failed += 1
+                        break
+
+                    nutrition = {
+                        "calories": round(float(data["calories"]), 1) if data.get("calories") is not None else None,
+                        "protein": round(float(data["protein"]), 1) if data.get("protein") is not None else None,
+                        "fat": round(float(data["fat"]), 1) if data.get("fat") is not None else None,
+                        "saturated_fat": round(float(data["saturated_fat"]), 1) if data.get("saturated_fat") is not None else None,
+                        "carbs": round(float(data["carbs"]), 1) if data.get("carbs") is not None else None,
+                        "sugar": round(float(data["sugar"]), 1) if data.get("sugar") is not None else None,
+                        "fiber": round(float(data["fiber"]), 1) if data.get("fiber") is not None else None,
+                        "salt": round(float(data["salt"]), 1) if data.get("salt") is not None else None,
+                        "estimated": True,
+                    }
+                    await db.recipes.update_one(
+                        {"recipe_id": recipe["recipe_id"]},
+                        {"$set": {"nutrition": nutrition, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+                    await write_log(source="nutrition_estimation", level="info",
+                                    message=f"Naehrwerte geschaetzt: {name}",
+                                    details={"recipe_id": recipe["recipe_id"], "recipe_name": name,
+                                             "calories": nutrition["calories"], "protein": nutrition["protein"],
+                                             "fat": nutrition["fat"], "carbs": nutrition["carbs"], "model": used_model},
+                                    user_id=user.user_id)
+                    yield sse({"type": "result", "recipe": name, "success": True,
+                               "calories": nutrition["calories"], "protein": nutrition["protein"],
+                               "fat": nutrition["fat"], "carbs": nutrition["carbs"]})
+                    succeeded += 1
+                    if i < len(candidates) - 1:
+                        await asyncio.sleep(request_delay)
+                    break
+
+                except Exception as e:
+                    err_str = str(e)
+                    quota_exceeded = _parse_quota_violations(err_str)
+                    is_rate_limit = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
+
+                    if is_rate_limit and attempt == 0:
+                        # retryDelay aus Fehler parsen (z.B. "55s" → 55)
+                        retry_match = re.search(r"'retryDelay':\s*'(\d+)s'", err_str)
+                        wait_secs = int(retry_match.group(1)) + 2 if retry_match else 65
+                        yield sse({"type": "retry", "recipe": name, "wait": wait_secs,
+                                   "quota_exceeded": quota_exceeded})
+                        await asyncio.sleep(wait_secs)
+                        continue  # Retry
+
+                    event: dict = {"type": "result", "recipe": name, "success": False, "error": err_str}
+                    if quota_exceeded:
+                        event["quota_exceeded"] = quota_exceeded
+                    yield sse(event)
+                    await write_log(source="nutrition_estimation", level="error",
+                                    message=f"Fehler bei Schaetzung fuer {name}: {err_str}",
                                     details={"recipe_id": recipe["recipe_id"], "recipe_name": name, "model": used_model},
                                     user_id=user.user_id)
                     failed += 1
-                    continue
-
-                data = extract_json(response)
-                if not isinstance(data, dict) or data.get("calories") is None:
-                    yield sse({"type": "result", "recipe": name, "success": False, "error": "JSON nicht erkannt"})
-                    await write_log(source="nutrition_estimation", level="warning",
-                                    message=f"Naehrwerte nicht erkannt fuer: {name}",
-                                    details={"recipe_id": recipe["recipe_id"], "recipe_name": name},
-                                    user_id=user.user_id)
-                    failed += 1
-                    continue
-
-                nutrition = {
-                    "calories": round(float(data["calories"]), 1) if data.get("calories") is not None else None,
-                    "protein": round(float(data["protein"]), 1) if data.get("protein") is not None else None,
-                    "fat": round(float(data["fat"]), 1) if data.get("fat") is not None else None,
-                    "saturated_fat": round(float(data["saturated_fat"]), 1) if data.get("saturated_fat") is not None else None,
-                    "carbs": round(float(data["carbs"]), 1) if data.get("carbs") is not None else None,
-                    "sugar": round(float(data["sugar"]), 1) if data.get("sugar") is not None else None,
-                    "fiber": round(float(data["fiber"]), 1) if data.get("fiber") is not None else None,
-                    "salt": round(float(data["salt"]), 1) if data.get("salt") is not None else None,
-                    "estimated": True,
-                }
-                await db.recipes.update_one(
-                    {"recipe_id": recipe["recipe_id"]},
-                    {"$set": {"nutrition": nutrition, "updated_at": datetime.now(timezone.utc).isoformat()}}
-                )
-                await write_log(source="nutrition_estimation", level="info",
-                                message=f"Naehrwerte geschaetzt: {name}",
-                                details={"recipe_id": recipe["recipe_id"], "recipe_name": name,
-                                         "calories": nutrition["calories"], "protein": nutrition["protein"],
-                                         "fat": nutrition["fat"], "carbs": nutrition["carbs"], "model": used_model},
-                                user_id=user.user_id)
-                yield sse({"type": "result", "recipe": name, "success": True,
-                           "calories": nutrition["calories"], "protein": nutrition["protein"],
-                           "fat": nutrition["fat"], "carbs": nutrition["carbs"]})
-                succeeded += 1
-                await asyncio.sleep(0.3)
-
-            except Exception as e:
-                err_str = str(e)
-                quota_exceeded = _parse_quota_violations(err_str)
-                event: dict = {"type": "result", "recipe": name, "success": False, "error": err_str}
-                if quota_exceeded:
-                    event["quota_exceeded"] = quota_exceeded
-                yield sse(event)
-                await write_log(source="nutrition_estimation", level="error",
-                                message=f"Fehler bei Schaetzung fuer {name}: {err_str}",
-                                details={"recipe_id": recipe["recipe_id"], "recipe_name": name, "model": used_model},
-                                user_id=user.user_id)
-                failed += 1
+                    break
 
         yield sse({"type": "done", "total": len(candidates), "succeeded": succeeded, "failed": failed,
                    "skipped": len(all_recipes) - len(candidates)})
