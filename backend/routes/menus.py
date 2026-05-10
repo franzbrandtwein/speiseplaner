@@ -539,13 +539,30 @@ async def extract_from_image(
                 }
         logger.warning("Gemini Vision fehlgeschlagen, Fallback auf Tesseract")
 
-    # Fallback: Tesseract OCR
+    # Fallback: Tesseract OCR mit Bild-Vorverarbeitung für bessere Ergebnisse
     try:
         import io
         import pytesseract
-        from PIL import Image as PILImage
-        pil_img = PILImage.open(io.BytesIO(data))
-        ocr_text = pytesseract.image_to_string(pil_img, lang="deu+eng")
+        from PIL import Image as PILImage, ImageEnhance, ImageFilter
+        pil_img = PILImage.open(io.BytesIO(data)).convert("RGB")
+
+        # Bild vergrößern falls zu klein (Tesseract braucht mind. ~300 DPI)
+        w, h = pil_img.size
+        if max(w, h) < 1800:
+            scale = 1800 / max(w, h)
+            pil_img = pil_img.resize((int(w * scale), int(h * scale)), PILImage.LANCZOS)
+
+        # Graustufen + Kontrast erhöhen
+        gray = pil_img.convert("L")
+        gray = ImageEnhance.Contrast(gray).enhance(2.0)
+        gray = ImageEnhance.Sharpness(gray).enhance(2.0)
+
+        # OCR zuerst auf vorverarbeitetem Bild, dann auf Original als Fallback
+        ocr_text = pytesseract.image_to_string(gray, lang="deu+eng",
+                                                config="--oem 1 --psm 6")
+        if len(ocr_text.strip()) < 10:
+            ocr_text = pytesseract.image_to_string(pil_img, lang="deu+eng",
+                                                    config="--oem 1 --psm 3")
     except Exception as e:
         logger.error(f"OCR error: {e}")
         raise HTTPException(500, f"Texterkennung fehlgeschlagen: {str(e)[:200]}")
@@ -553,6 +570,7 @@ async def extract_from_image(
     if not ocr_text.strip():
         raise HTTPException(422, "Kein Text im Bild erkannt. Bitte ein schärferes Foto verwenden.")
 
+    logger.info(f"OCR-Text ({len(ocr_text)} Zeichen): {ocr_text[:200]!r}")
     tokens = await _tokenize_with_llm_or_heuristic(ocr_text)
     return {"tokens": tokens, "count": len(tokens), "image_url": image_url, "restaurant_name": None}
 

@@ -370,10 +370,12 @@ export default function MenuDetail() {
         setExtractTokens(data.tokens);
         setExtractOpen(true);
       } else {
-        toast.success("Bild hochgeladen – keine Gerichte erkannt");
+        toast.info("Bild hochgeladen – keine Gerichte automatisch erkannt. Bitte Text manuell eingeben.");
+        setExtractOpen(true);
       }
-    } catch {
-      toast.error("Bild-Upload fehlgeschlagen");
+    } catch (err) {
+      const msg = err.response?.data?.detail || "Bild-Upload fehlgeschlagen";
+      toast.error(msg);
     } finally {
       setUploading(false);
     }
