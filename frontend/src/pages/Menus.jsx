@@ -234,7 +234,7 @@ export default function Menus() {
                   {/* Vorschau-Bild oder Platzhalter */}
                   {menu.images?.[0] ? (
                     <img
-                      src={menu.images[0]}
+                      src={menu.images[0].startsWith("/api") ? `${API.replace("/api", "")}${menu.images[0]}` : menu.images[0]}
                       alt={menu.name}
                       className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
                     />

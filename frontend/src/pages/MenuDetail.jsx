@@ -48,7 +48,7 @@ const ImageGallery = ({ images, onUpload, onDelete, uploading }) => {
         <div className="grid grid-cols-3 gap-2">
           {images.map((img, i) => (
             <div key={i} className="relative group aspect-square">
-              <img src={img} alt="" className="w-full h-full object-cover rounded-lg" />
+              <img src={img.startsWith("/api") ? `${API.replace("/api", "")}${img}` : img} alt="" className="w-full h-full object-cover rounded-lg" />
               <button
                 onClick={() => onDelete(img)}
                 className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
