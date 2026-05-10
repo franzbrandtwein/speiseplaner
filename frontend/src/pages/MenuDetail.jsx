@@ -32,7 +32,7 @@ const ImageGallery = ({ images, onUpload, onDelete, uploading }) => {
             ? <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mr-2" />
             : <Upload className="w-4 h-4 mr-2" />
           }
-          Hochladen
+          {uploading ? "Analysiere…" : "Hochladen"}
         </Button>
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => onUpload(e.target.files[0])} />
       </div>
@@ -97,14 +97,19 @@ const TokenRow = ({ token, onChange }) => {
 };
 
 // ─── Extraktions-Wizard ───────────────────────────────────────────────────────
-const ExtractDialog = ({ open, onClose, menuId, onDone }) => {
-  const [step, setStep]       = useState(0); // 0=input, 1=classify
+const ExtractDialog = ({ open, onClose, menuId, onDone, initialTokens = null }) => {
+  const [step, setStep]       = useState(initialTokens ? 1 : 0);
   const [inputMode, setInputMode] = useState("text"); // "text" | "image"
   const [text, setText]       = useState("");
-  const [tokens, setTokens]   = useState([]);
+  const [tokens, setTokens]   = useState(initialTokens || []);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving]   = useState(false);
   const fileRef = useRef();
+
+  // Wenn von außen Tokens übergeben werden (z.B. nach Galerie-Upload), direkt zu Schritt 1
+  useEffect(() => {
+    if (initialTokens) { setTokens(initialTokens); setStep(1); }
+  }, [initialTokens]);
 
   const handleClose = () => {
     setText(""); setTokens([]); setStep(0); setInputMode("text"); onClose();
@@ -331,6 +336,7 @@ export default function MenuDetail() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [extractOpen, setExtractOpen] = useState(false);
+  const [extractTokens, setExtractTokens] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -352,12 +358,20 @@ export default function MenuDetail() {
     const fd = new FormData();
     fd.append("file", file);
     try {
-      const { data } = await axios.post(`${API}/menus/${id}/images`, fd, {
+      // extract-image speichert das Bild UND führt LLM-Erkennung durch
+      const { data } = await axios.post(`${API}/menus/${id}/extract-image`, fd, {
         withCredentials: true,
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setMenu(prev => ({ ...prev, images: data.images }));
-      toast.success("Bild hochgeladen");
+      if (data.image_url) {
+        setMenu(prev => ({ ...prev, images: [...(prev.images || []), data.image_url] }));
+      }
+      if (data.tokens?.length > 0) {
+        setExtractTokens(data.tokens);
+        setExtractOpen(true);
+      } else {
+        toast.success("Bild hochgeladen – keine Gerichte erkannt");
+      }
     } catch {
       toast.error("Bild-Upload fehlgeschlagen");
     } finally {
@@ -496,9 +510,10 @@ export default function MenuDetail() {
 
       <ExtractDialog
         open={extractOpen}
-        onClose={() => setExtractOpen(false)}
+        onClose={() => { setExtractOpen(false); setExtractTokens(null); }}
         menuId={id}
         onDone={onExtractDone}
+        initialTokens={extractTokens}
       />
     </Layout>
   );
