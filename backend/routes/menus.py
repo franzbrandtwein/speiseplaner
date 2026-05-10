@@ -414,7 +414,11 @@ async def _tokenize_with_llm_or_heuristic(text: str) -> list[dict]:
             '- "skip": Überschriften, Kategorien, Trennzeichen, sonstige Zeilen\n\n'
             f"Speisekarten-Text:\n{text[:4000]}"
         )
-        response = await call_gemini(prompt)
+        try:
+            response = await call_gemini(prompt)
+        except Exception as e:
+            logger.warning(f"Gemini Tokenisierung fehlgeschlagen ({e}), nutze Heuristik")
+            response = None
         if response:
             data = extract_json(response)
             if isinstance(data, list) and data and "text" in data[0]:
