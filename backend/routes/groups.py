@@ -23,13 +23,32 @@ async def _get_group_for_user(group_id: str, user_id: str):
 @router.get("/groups")
 async def list_my_groups(user: User = Depends(get_current_user)):
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
-    group_ids = list(user_doc.get("group_ids", []))
     active_gid = user_doc.get("group_id")
-    if active_gid and active_gid not in group_ids:
-        group_ids = [active_gid] + group_ids
-    if not group_ids:
+
+    # Ground-Truth: alle Gruppen in denen der User Mitglied ist
+    groups = await db.groups.find(
+        {"member_ids": user.user_id}, {"_id": 0}
+    ).to_list(100)
+
+    # group_ids am User-Dokument mit tatsächlicher Mitgliedschaft synchronisieren
+    actual_ids = [g["group_id"] for g in groups]
+    if set(actual_ids) != set(user_doc.get("group_ids", [])):
+        await db.users.update_one(
+            {"user_id": user.user_id},
+            {"$set": {"group_ids": actual_ids}}
+        )
+
+    # Aktive Gruppe validieren: falls ungültig erste verfügbare nehmen
+    if active_gid and active_gid not in actual_ids:
+        active_gid = actual_ids[0] if actual_ids else None
+        await db.users.update_one(
+            {"user_id": user.user_id},
+            {"$set": {"group_id": active_gid}}
+        )
+
+    if not groups:
         return {"groups": [], "active_group_id": None}
-    groups = await db.groups.find({"group_id": {"$in": group_ids}}, {"_id": 0}).to_list(100)
+
     result = []
     for g in groups:
         members = await db.users.find(
@@ -79,7 +98,10 @@ async def create_group(data: GroupCreate, user: User = Depends(get_current_user)
 @router.put("/groups/switch/{group_id}")
 async def switch_active_group(group_id: str, user: User = Depends(get_current_user)):
     await _get_group_for_user(group_id, user.user_id)
-    await db.users.update_one({"user_id": user.user_id}, {"$set": {"group_id": group_id}})
+    await db.users.update_one(
+        {"user_id": user.user_id},
+        {"$set": {"group_id": group_id}, "$addToSet": {"group_ids": group_id}}
+    )
     return {"message": "Aktive Gruppe gewechselt", "group_id": group_id}
 
 
