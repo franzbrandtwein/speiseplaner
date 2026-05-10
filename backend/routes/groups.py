@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Request, Depends
 
 from core import db, get_current_user, send_invitation_email
-from models import User, Group, GroupCreate, Invitation, InvitationCreate
+from models import User, Group, GroupCreate, Invitation, InvitationCreate, MealType, DEFAULT_MEAL_TYPES
 
 router = APIRouter(prefix="/api")
 
@@ -120,7 +120,22 @@ async def get_group(group_id: str, user: User = Depends(get_current_user)):
     return {**group, "members": members, "invitations": invitations, "is_owner": group.get("owner_id") == user.user_id}
 
 
-@router.delete("/groups/{group_id}/members/{member_id}")
+@router.put("/groups/{group_id}/meal-types")
+async def update_meal_types(group_id: str, meal_types: list[MealType], user: User = Depends(get_current_user)):
+    group = await _get_group_for_user(group_id, user.user_id)
+    if group.get("owner_id") != user.user_id:
+        raise HTTPException(403, "Nur der Owner kann Mahlzeiten konfigurieren")
+    if not meal_types:
+        raise HTTPException(400, "Mindestens eine Mahlzeit ist erforderlich")
+    # Keys müssen eindeutig und nicht leer sein
+    keys = [mt.key.strip() for mt in meal_types]
+    if len(set(keys)) != len(keys) or any(k == "" for k in keys):
+        raise HTTPException(400, "Mahlzeit-Schlüssel müssen eindeutig und nicht leer sein")
+    await db.groups.update_one(
+        {"group_id": group_id},
+        {"$set": {"meal_types": [mt.model_dump() for mt in meal_types]}}
+    )
+    return {"message": "Mahlzeiten aktualisiert", "meal_types": [mt.model_dump() for mt in meal_types]}
 async def remove_member(group_id: str, member_id: str, user: User = Depends(get_current_user)):
     group = await _get_group_for_user(group_id, user.user_id)
     if group.get("owner_id") != user.user_id:

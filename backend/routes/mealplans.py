@@ -6,10 +6,20 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Request, Depends
 
 from core import db, get_current_user, send_push_to_user, WEEKDAY_LABELS, MEAL_LABELS
-from models import User, MealPlan, MealPlanUpdate, DayPlan, TemplateCreate
+from models import User, MealPlan, MealPlanUpdate, DayPlan, TemplateCreate, DEFAULT_MEAL_TYPES
 
 logger = logging.getLogger("kochplaner.mealplans")
 router = APIRouter(prefix="/api")
+
+
+async def _get_group_meal_types(group_id: str | None) -> list[dict]:
+    """Gibt die konfigurierten Mahlzeiten-Typen einer Gruppe zurück (Fallback: Standard)."""
+    if not group_id:
+        return DEFAULT_MEAL_TYPES
+    group = await db.groups.find_one({"group_id": group_id}, {"_id": 0, "meal_types": 1})
+    if group and group.get("meal_types"):
+        return group["meal_types"]
+    return DEFAULT_MEAL_TYPES
 
 
 @router.get("/mealplans")
@@ -27,9 +37,13 @@ async def get_meal_plan(week_start: str, user: User = Depends(get_current_user))
     if not plan:
         days = []
         start_date = datetime.fromisoformat(week_start)
+        meal_types = await _get_group_meal_types(group_id)
         for i in range(7):
             day_date = start_date + timedelta(days=i)
-            days.append({"date": day_date.strftime("%Y-%m-%d"), "breakfast": [], "lunch": [], "dinner": []})
+            day = {"date": day_date.strftime("%Y-%m-%d")}
+            for mt in meal_types:
+                day[mt["key"]] = []
+            days.append(day)
         return {
             "plan_id": None, "user_id": user.user_id, "group_id": group_id,
             "week_start": week_start, "days": days,
@@ -76,19 +90,29 @@ async def save_meal_plan(plan_data: MealPlanUpdate, request: Request, user: User
 
     new_meals = []
     old_days = {d["date"]: d for d in (existing or {}).get("days", [])} if existing else {}
+    meal_types = await _get_group_meal_types(group_id)
+    meal_keys = [mt["key"] for mt in meal_types]
+    meal_label_map = {mt["key"]: mt["label"] for mt in meal_types}
     for new_day in plan_data.days:
+        new_day_dict = new_day.model_dump()
         old_day = old_days.get(new_day.date, {})
-        for mt in ["breakfast", "lunch", "dinner"]:
-            new_meals_list = getattr(new_day, mt, []) or []
-            old_meals_raw = old_day.get(mt, [])
+        for mt_key in meal_keys:
+            new_meals_list = new_day_dict.get(mt_key, []) or []
+            old_meals_raw = old_day.get(mt_key, [])
             if isinstance(old_meals_raw, dict):
                 old_meals_raw = [old_meals_raw] if old_meals_raw.get("recipe_id") else []
             elif old_meals_raw is None:
                 old_meals_raw = []
             old_rids = {m.get("recipe_id") for m in old_meals_raw if isinstance(m, dict) and m.get("recipe_id")}
             for new_meal in new_meals_list:
-                if new_meal.recipe_id and new_meal.recipe_id not in old_rids:
-                    new_meals.append((new_day.date, mt, new_meal.recipe_name or "Neues Gericht"))
+                if isinstance(new_meal, dict):
+                    rid = new_meal.get("recipe_id")
+                    rname = new_meal.get("recipe_name") or "Neues Gericht"
+                else:
+                    rid = getattr(new_meal, "recipe_id", None)
+                    rname = getattr(new_meal, "recipe_name", None) or "Neues Gericht"
+                if rid and rid not in old_rids:
+                    new_meals.append((new_day.date, mt_key, rname))
 
     if existing:
         await db.meal_plans.update_one(
@@ -119,7 +143,7 @@ async def save_meal_plan(plan_data: MealPlanUpdate, request: Request, user: User
                     day_label = WEEKDAY_LABELS.get(dt.weekday(), date_str)
                 except Exception:
                     day_label = date_str
-                meal_label = MEAL_LABELS.get(meal_type, meal_type)
+                meal_label = meal_label_map.get(meal_type, MEAL_LABELS.get(meal_type, meal_type))
                 body = f"{recipe_name} – {day_label}, {meal_label}"
                 await send_push_to_user(user.user_id, "Neues Gericht im Speiseplan", body, "/meal-planner", "new_meal")
 
@@ -137,7 +161,7 @@ async def save_meal_plan(plan_data: MealPlanUpdate, request: Request, user: User
                                     day_label = WEEKDAY_LABELS.get(dt.weekday(), date_str)
                                 except Exception:
                                     day_label = date_str
-                                meal_label = MEAL_LABELS.get(meal_type, meal_type)
+                                meal_label = meal_label_map.get(meal_type, MEAL_LABELS.get(meal_type, meal_type))
                                 body = f"{user.name} hat hinzugefügt: {recipe_name} – {day_label}, {meal_label}"
                                 await send_push_to_user(member_id, "Speiseplan aktualisiert", body, "/meal-planner", "new_meal")
 

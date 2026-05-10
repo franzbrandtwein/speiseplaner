@@ -135,6 +135,7 @@ class MealSlot(BaseModel):
 
 
 class DayPlan(BaseModel):
+    model_config = ConfigDict(extra="allow")
     date: str
     breakfast: List[MealSlot] = []
     lunch: List[MealSlot] = []
@@ -189,12 +190,25 @@ class LoginRequest(BaseModel):
 
 # ============ GROUPS ============
 
+DEFAULT_MEAL_TYPES = [
+    {"key": "breakfast", "label": "Frühstück"},
+    {"key": "lunch", "label": "Mittagessen"},
+    {"key": "dinner", "label": "Abendessen"},
+]
+
+
+class MealType(BaseModel):
+    key: str
+    label: str
+
+
 class Group(BaseModel):
     model_config = ConfigDict(extra="ignore")
     group_id: str = Field(default_factory=lambda: f"group_{uuid.uuid4().hex[:12]}")
     name: str
     owner_id: str
     member_ids: List[str] = []
+    meal_types: List[MealType] = Field(default_factory=lambda: [MealType(**m) for m in DEFAULT_MEAL_TYPES])
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

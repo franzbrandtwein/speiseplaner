@@ -9,7 +9,8 @@ import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import {
   Users, Plus, Mail, Copy, Check, UserMinus, Crown,
-  LogOut, Loader2, Send, ChevronDown, ChevronUp, Star, Trash2
+  LogOut, Loader2, Send, ChevronDown, ChevronUp, Star, Trash2,
+  UtensilsCrossed, GripVertical, X
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -21,12 +22,39 @@ import {
 } from "../components/ui/alert-dialog";
 
 // ── Einzelne Gruppen-Karte ────────────────────────────────────────────────────
+const DEFAULT_MEAL_TYPES = [
+  { key: "breakfast", label: "Frühstück" },
+  { key: "lunch", label: "Mittagessen" },
+  { key: "dinner", label: "Abendessen" },
+];
+
 const GroupCard = ({ group, isActive, currentUser, onSwitch, onInvited, onLeft, onDeleted }) => {
   const [expanded, setExpanded] = useState(isActive);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [lastLink, setLastLink] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [mealTypes, setMealTypes] = useState(group.meal_types?.length ? group.meal_types : DEFAULT_MEAL_TYPES);
+  const [savingMeals, setSavingMeals] = useState(false);
+
+  const handleSaveMealTypes = async () => {
+    const valid = mealTypes.filter(mt => mt.key.trim() && mt.label.trim());
+    if (valid.length === 0) return toast.error("Mindestens eine Mahlzeit erforderlich");
+    const keys = valid.map(mt => mt.key.trim());
+    if (new Set(keys).size !== keys.length) return toast.error("Mahlzeit-Schlüssel müssen eindeutig sein");
+    setSavingMeals(true);
+    try {
+      await axios.put(`${API}/groups/${group.group_id}/meal-types`,
+        valid.map(mt => ({ key: mt.key.trim(), label: mt.label.trim() })),
+        { withCredentials: true }
+      );
+      toast.success("Mahlzeiten gespeichert");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Fehler beim Speichern");
+    } finally {
+      setSavingMeals(false);
+    }
+  };
 
   const handleInvite = async () => {
     if (!inviteEmail.trim()) return toast.error("Bitte E-Mail eingeben");
@@ -148,6 +176,48 @@ const GroupCard = ({ group, isActive, currentUser, onSwitch, onInvited, onLeft, 
               </div>
             )}
           </div>
+
+          {/* Mahlzeiten-Konfiguration (nur für Owner) */}
+          {group.is_owner && (
+            <div>
+              <p className="text-sm font-medium text-[var(--text-secondary)] mb-3 flex items-center gap-2">
+                <UtensilsCrossed className="w-4 h-4" /> Mahlzeiten konfigurieren
+              </p>
+              <div className="space-y-2">
+                {mealTypes.map((mt, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <GripVertical className="w-4 h-4 text-gray-300 shrink-0" />
+                    <Input
+                      value={mt.label}
+                      onChange={e => setMealTypes(prev => prev.map((m, i) => i === idx ? { ...m, label: e.target.value } : m))}
+                      placeholder="Name (z.B. Frühstück)"
+                      className="flex-1"
+                    />
+                    <Button
+                      size="sm" variant="ghost"
+                      className="h-9 w-9 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 shrink-0"
+                      disabled={mealTypes.length <= 1}
+                      onClick={() => setMealTypes(prev => prev.filter((_, i) => i !== idx))}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 mt-3">
+                <Button
+                  size="sm" variant="outline"
+                  onClick={() => setMealTypes(prev => [...prev, { key: `meal_${Date.now()}`, label: "" }])}
+                  className="flex-1"
+                >
+                  <Plus className="w-4 h-4" /> Mahlzeit hinzufügen
+                </Button>
+                <Button size="sm" onClick={handleSaveMealTypes} disabled={savingMeals} className="btn-primary">
+                  {savingMeals ? <Loader2 className="w-4 h-4 animate-spin" /> : "Speichern"}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Gruppe verlassen / löschen */}
           <div className="flex gap-2 pt-2 border-t border-gray-100">

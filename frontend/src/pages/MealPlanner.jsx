@@ -549,17 +549,18 @@ const SlotCell = ({ meals, totalPortions, onOpen, dateStr, mealKey, onDragStart,
 };
 
 // ─── Slot Detail Dialog (Overlay, Multi-Meal) ─────────────────────────────────
-const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, onAddMeal, onEditMeal, onRemoveMeal, onClearAll, onUpdatePortions, onUpdateSidePortions, onRemoveSide, onCook, recipes }) => {
+const SlotDetailDialog = ({ open, onClose, meals, dateStr, mealType, mealLabel, onAddMeal, onEditMeal, onRemoveMeal, onClearAll, onUpdatePortions, onUpdateSidePortions, onRemoveSide, onCook, recipes }) => {
   if (!meals || meals.length === 0) return null;
 
-  const mealLabels = { breakfast: "Frühstück", lunch: "Mittagessen", dinner: "Abendessen" };
+  const fallbackLabels = { breakfast: "Frühstück", lunch: "Mittagessen", dinner: "Abendessen" };
+  const label = mealLabel || fallbackLabels[mealType] || mealType;
   const dateLabel = dateStr ? format(new Date(dateStr), "EEEE, d. MMMM", { locale: de }) : "";
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-md max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle className="font-heading text-lg">{mealLabels[mealType] || ""}</DialogTitle>
+          <DialogTitle className="font-heading text-lg">{label}</DialogTitle>
           <p className="text-sm text-[var(--text-muted)]">{dateLabel}</p>
         </DialogHeader>
 
@@ -670,14 +671,28 @@ const MEAL_META = {
   dinner:    { label: "Abendessen", icon: Moon, color: "text-indigo-500 bg-indigo-50" },
 };
 
-const WeekListView = ({ days, mealPlan, recipes, onSlotClick }) => {
+const WeekListView = ({ days, mealPlan, recipes, onSlotClick, mealTypes }) => {
   const [open, setOpen] = useState(true);
+
+  const mealMetaMap = Object.fromEntries(
+    (mealTypes || []).map((mt, idx) => {
+      const ICONS = [Coffee, UtensilsCrossed, Moon, UtensilsCrossed, Coffee];
+      const COLORS = [
+        "text-amber-500 bg-amber-50",
+        "text-emerald-600 bg-emerald-50",
+        "text-indigo-500 bg-indigo-50",
+        "text-rose-500 bg-rose-50",
+        "text-sky-500 bg-sky-50",
+      ];
+      return [mt.key, { label: mt.label, icon: ICONS[idx] || UtensilsCrossed, color: COLORS[idx] || "text-gray-500 bg-gray-50" }];
+    })
+  );
 
   const getDayMeals = (dateStr) => {
     const day = mealPlan?.days?.find(d => d.date === dateStr);
     if (!day) return [];
-    return ["breakfast", "lunch", "dinner"].flatMap(mt =>
-      (day[mt] || []).map(m => ({ ...m, mealType: mt }))
+    return (mealTypes || []).flatMap(mt =>
+      (day[mt.key] || []).map(m => ({ ...m, mealType: mt.key }))
     );
   };
 
@@ -711,7 +726,7 @@ const WeekListView = ({ days, mealPlan, recipes, onSlotClick }) => {
                 </div>
                 <div className="divide-y divide-gray-50">
                   {meals.map((meal, i) => {
-                    const meta = MEAL_META[meal.mealType];
+                    const meta = mealMetaMap[meal.mealType] || { label: meal.mealType, icon: UtensilsCrossed, color: "text-gray-500 bg-gray-50" };
                     const recipe = recipes?.find(r => r.recipe_id === meal.recipe_id);
                     return (
                       <div
@@ -780,6 +795,11 @@ const MealPlanner = () => {
   const [templateName, setTemplateName] = useState("");
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [dayNutrition, setDayNutrition] = useState({}); // { dateStr: { calories, protein, ... } }
+  const [mealTypes, setMealTypes] = useState([
+    { key: "breakfast", label: "Frühstück" },
+    { key: "lunch", label: "Mittagessen" },
+    { key: "dinner", label: "Abendessen" },
+  ]);
 
   const weekStartStr = format(currentWeekStart, "yyyy-MM-dd");
 
@@ -809,6 +829,9 @@ const MealPlanner = () => {
       setMealPlan(planRes.data);
       setRecipes(recipesRes.data);
       setGroupMembers((groupRes.data.members || []).map(m => m.name));
+      if (groupRes.data.group?.meal_types?.length) {
+        setMealTypes(groupRes.data.group.meal_types);
+      }
       fetchWeekNutrition(planRes.data);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -847,8 +870,8 @@ const MealPlanner = () => {
     if (!plan?.days) return;
     const recipeIds = new Set();
     plan.days.forEach(day => {
-      ["breakfast", "lunch", "dinner"].forEach(mt => {
-        (day[mt] || []).forEach(m => { if (m.recipe_id) recipeIds.add(m.recipe_id); });
+      mealTypes.forEach(mt => {
+        (day[mt.key] || []).forEach(m => { if (m.recipe_id) recipeIds.add(m.recipe_id); });
       });
     });
     if (recipeIds.size === 0) return;
@@ -867,8 +890,8 @@ const MealPlanner = () => {
     const byDay = {};
     plan.days.forEach(day => {
       const total = { calories: null, protein: null, fat: null, carbs: null };
-      ["breakfast", "lunch", "dinner"].forEach(mt => {
-        (day[mt] || []).forEach(m => {
+      mealTypes.forEach(mt => {
+        (day[mt.key] || []).forEach(m => {
           if (!m.recipe_id || m.is_external) return;
           const n = nutritionByRecipe[m.recipe_id];
           if (!n?.per_portion) return;
@@ -1195,11 +1218,17 @@ const MealPlanner = () => {
     }
   };
 
-  const mealTypes = [
-    { key: "breakfast", label: "Frühstück", icon: Coffee },
-    { key: "lunch", label: "Mittagessen", icon: UtensilsCrossed },
-    { key: "dinner", label: "Abendessen", icon: Moon }
-  ];
+  const mealTypesMeta = mealTypes.map((mt, idx) => {
+    const ICONS = [Coffee, UtensilsCrossed, Moon, UtensilsCrossed, Coffee];
+    const COLORS = [
+      "text-amber-500 bg-amber-50",
+      "text-emerald-600 bg-emerald-50",
+      "text-indigo-500 bg-indigo-50",
+      "text-rose-500 bg-rose-50",
+      "text-sky-500 bg-sky-50",
+    ];
+    return { ...mt, icon: ICONS[idx] || UtensilsCrossed, color: COLORS[idx] || "text-gray-500 bg-gray-50" };
+  });
 
   if (loading) {
     return (
@@ -1336,7 +1365,7 @@ const MealPlanner = () => {
             </div>
 
             {/* Meal Rows */}
-            {mealTypes.map(({ key, label, icon: Icon }) => (
+            {mealTypesMeta.map(({ key, label, icon: Icon }) => (
               <div key={key} className="grid grid-cols-8 gap-2 mb-2">
                 <div className="flex items-center gap-2 p-3 text-[var(--text-secondary)]">
                   <Icon className="w-5 h-5" />
@@ -1376,6 +1405,7 @@ const MealPlanner = () => {
           mealPlan={mealPlan}
           recipes={recipes}
           onSlotClick={handleSlotClick}
+          mealTypes={mealTypes}
         />
         {detailSlot && (
           <SlotDetailDialog
@@ -1384,6 +1414,7 @@ const MealPlanner = () => {
             meals={detailSlot ? getMealsForSlot(detailSlot.dateStr, detailSlot.mealType) : []}
             dateStr={detailSlot?.dateStr}
             mealType={detailSlot?.mealType}
+            mealLabel={mealTypes.find(mt => mt.key === detailSlot?.mealType)?.label}
             onAddMeal={() => {
               setSelectedSlot({ dateStr: detailSlot.dateStr, mealType: detailSlot.mealType, editIndex: null });
               setDialogOpen(true);
